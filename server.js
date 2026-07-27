@@ -1,9 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-const { scrapeDomainUrl } = require('./services/scraperService');
-const { verifyContentClaims } = require('./services/factCheckService');
-const { generateSeoBrief, generateSocialPosts, generateBlogArticle, transformRepurposeContent } = require('./services/vertexService');
-const { getCreditBalance, deductCredits, topUpCredits, setSubscriptionTier } = require('./services/creditService');
+const { scrapeDomainUrl } = require('./modules/workspace/scraper.service');
+const { verifyContentClaims } = require('./modules/factCheck/factCheck.service');
+const { generateSeoBrief, generateSocialPosts, generateBlogArticle, transformRepurposeContent } = require('./modules/seo/vertex.service');
+const { getCreditBalance, deductCredits, topUpCredits, setSubscriptionTier } = require('./modules/creative/credit.service');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
