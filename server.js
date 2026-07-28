@@ -141,6 +141,22 @@ app.put('/api/workspace/:id', async (req, res) => {
   res.status(404).json({ success: false, error: 'Workspace not found' });
 });
 
+app.delete('/api/workspace/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deleted = await Workspace.findByIdAndDelete(id);
+    if (!deleted) {
+      await Workspace.deleteOne({ id });
+    }
+    console.log(`🗑️ Brand Workspace Deleted from MongoDB Atlas: ID ${id}`);
+  } catch (e) {
+    console.log('MongoDB Delete Note:', e.message);
+  }
+  memoryWorkspaces = memoryWorkspaces.filter(w => w.id !== id && w._id?.toString() !== id);
+  res.json({ success: true, message: 'Workspace deleted successfully' });
+});
+
+
 // 2. SEO Intelligence Endpoints (MongoDB Saved)
 app.post('/api/seo/brief/generate', async (req, res) => {
   const brief = await generateSeoBrief(req.body);
