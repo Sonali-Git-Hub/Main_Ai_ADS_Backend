@@ -6,13 +6,17 @@ const Workspace = require('./models/Workspace');
 const Content = require('./models/Content');
 const Calendar = require('./models/Calendar');
 
-const { scrapeDomainUrl } = require('./modules/workspace/scraper.service');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+
+const { scrapeDomainUrl, parseBrandDocument, generateBrandDNA } = require('./modules/workspace/scraper.service');
 const { verifyContentClaims } = require('./modules/factCheck/factCheck.service');
 const { generateSeoBrief, generateSocialPosts, generateBlogArticle, transformRepurposeContent } = require('./modules/seo/vertex.service');
 const { getCreditBalance, deductCredits, topUpCredits, setSubscriptionTier } = require('./modules/creative/credit.service');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 
 // Connect to MongoDB Atlas Cloud
 connectDB();
@@ -103,12 +107,13 @@ app.post('/api/workspace/create', async (req, res) => {
     industryCategory: scraped.industryCategory,
     missionStatement: scraped.missionStatement,
     tagline: scraped.tagline,
-    positioningSummary: scraped.positioningSummary,
-    metaDescription: scraped.metaDescription,
-    approvedClaims: scraped.approvedClaims,
-    restrictedClaims: scraped.restrictedClaims,
+    approvedClaims: (scraped.approvedClaims || []).map(c => 
+      typeof c === 'string' ? { claimText: c, sourceUrl: scraped.domainUrl, verified: true } : c
+    ),
+    restrictedClaims: scraped.tabooTopics || scraped.restrictedClaims || [],
     priorityKeywords: scraped.priorityKeywords || []
   };
+
 
   let savedWorkspace = { id: `ws_${Date.now()}`, ...workspaceData };
 
@@ -123,6 +128,46 @@ app.post('/api/workspace/create', async (req, res) => {
 
   res.json({ success: true, workspace: savedWorkspace, scrapedDetails: scraped });
 });
+
+app.post('/api/workspace/upload-doc', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+    const { domainUrl = 'https://custombrand.com', brandName = 'Custom Brand' } = req.body;
+    const parsedDoc = await parseBrandDocument(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const brandDna = await generateBrandDNA(domainUrl, brandName, parsedDoc);
+
+    const savedWorkspace = {
+      id: `ws_${Date.now()}`,
+      brandName: brandDna.brandName,
+      domainUrl: brandDna.domainUrl,
+      logoUrl: brandDna.faviconUrl,
+      brandColors: brandDna.brandColors,
+      industryCategory: brandDna.industryCategory,
+      tagline: brandDna.tagline,
+      missionStatement: brandDna.missionStatement,
+      targetAudience: brandDna.targetAudience,
+      brandVoiceTone: brandDna.brandVoiceTone,
+      competitorLandscape: brandDna.competitorLandscape,
+      contentPillars: brandDna.contentPillars,
+      socialMediaPresence: brandDna.socialMediaPresence,
+      approvedClaims: brandDna.approvedClaims.map(c => ({ claimText: typeof c === 'string' ? c : c.claimText, verified: true })),
+      restrictedClaims: brandDna.tabooTopics,
+      confidenceScore: brandDna.confidenceScore,
+      sourceReasoning: brandDna.sourceReasoning,
+      crawledSources: brandDna.crawledSources,
+      createdAt: new Date().toISOString()
+    };
+
+    memoryWorkspaces.unshift(savedWorkspace);
+    res.json({ success: true, workspace: savedWorkspace, documentDetails: parsedDoc });
+  } catch (err) {
+    console.log('Document upload parse error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 app.put('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
@@ -350,6 +395,20 @@ app.patch('/api/approvals/status', async (req, res) => {
   res.json({ success: true, item });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`AI Ads Backend API running on http://localhost:${PORT}`);
 });
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`⚠️ Port ${PORT} is already in use by an existing background process.`);
+    console.log(`🔄 Automatically attempting fallback port ${Number(PORT) + 1}...`);
+    const fallbackPort = Number(PORT) + 1;
+    app.listen(fallbackPort, () => {
+      console.log(`AI Ads Backend API running on http://localhost:${fallbackPort}`);
+    });
+  } else {
+    console.error('Server error:', err);
+  }
+});
+

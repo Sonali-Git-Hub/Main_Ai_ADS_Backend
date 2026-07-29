@@ -16,6 +16,9 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "mongoose": "^9.8.0",
-    "node-vibrant": "^4.0.4"
+    "multer": "^2.2.0",
+    "node-vibrant": "^4.0.4",
+    "officeparser": "^7.5.0",
+    "pdf-parse": "^2.4.5"
   }
 }

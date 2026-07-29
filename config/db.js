@@ -1,12 +1,14 @@
 const mongoose = require('mongoose');
 const dns = require('dns');
 
-// Fix Windows Node.js DNS SRV resolution issue for mongodb+srv://
+// Fix Windows Node.js DNS SRV resolution issue for mongodb+srv:// by setting public Google & Cloudflare DNS
 try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
   if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
   }
 } catch (e) {}
+
 
 const connectDB = async () => {
   const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai_ads_db';
