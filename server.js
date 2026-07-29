@@ -25,25 +25,8 @@ app.use(cors());
 app.use(express.json());
 
 // Memory Store Fallback
-let memoryWorkspaces = [
-  {
-    id: 'ws_001',
-    brandName: 'UWO AI Ads',
-    domainUrl: 'https://aiads.uwo.ai',
-    logoUrl: 'https://api.dicebear.com/7.x/identicon/svg?seed=UWO',
-    brandColors: ['#6366F1', '#8B5CF6', '#06B6D4', '#0F172A'],
-    metaDescription: 'Governed AI-native content marketing, SEO and social-media operations platform.',
-    positioningSummary: 'UWO AI Ads is the premier operating system for agencies and enterprise marketing teams to plan, create, govern, approve, publish, and scale digital content.',
-    voiceGuidelines: { formalityScore: 4, toneKeywords: ['Authoritative', 'Evidence-Based', 'Innovative', 'Direct'], taboos: ['Guaranteed ranking', 'Low effort', 'Spam'] },
-    approvedClaims: [
-      { claimText: 'Reduces long-form SEO draft turnaround time to under 12 seconds', sourceUrl: 'https://uwo.ai/benchmarks', verified: true },
-      { claimText: 'Governed multi-brand workspace with RBAC role control', sourceUrl: 'https://uwo.ai/governance', verified: true }
-    ],
-    restrictedClaims: ['Guaranteed #1 Google ranking', '100% viral outcome guaranteed'],
-    priorityKeywords: ['AI Content Marketing', 'Brand DNA', 'SEO Intelligence', 'Campaign Operations'],
-    contentPillars: ['Enterprise AI', 'SEO Clustering', 'Brand Governance', 'Social Studio Ops']
-  }
-];
+let memoryWorkspaces = [];
+
 
 let memoryContentStore = [
   {
