@@ -72,7 +72,7 @@ const chatWithGemini = async (messages, options = {}) => {
     return { text, model: useVertexAI ? `vertex-ai (${modelId})` : `gemini-api (${modelId})` };
   }
 
-  throw new Error('Neither Google Cloud Vertex AI nor a valid GEMINI_API_KEY is configured.');
+  throw new Error('Neither Google Cloud Vertex AI nor a valid GEMINI_API_KEY is configured. Please set GEMINI_API_KEY or OPENAI_API_KEY in your .env file.');
 };
 
 // ─── OpenAI Chat ──────────────────────────────────────────────────────────────
@@ -139,16 +139,23 @@ const chatWithGroq = async (messages, options = {}) => {
 const chat = async (messages, options = {}) => {
   const modelChoice = (options.model || 'gemini').toLowerCase();
 
+  // If Gemini/Vertex is not configured, skip directly to OpenAI
+  const geminiAvailable = !!aiClient;
+
   try {
     if (modelChoice === 'gpt-4o' || modelChoice === 'openai') {
       return await chatWithOpenAI(messages, options);
     } else if (modelChoice === 'groq' || modelChoice === 'llama') {
       return await chatWithGroq(messages, options);
+    } else if (!geminiAvailable) {
+      // Gemini/Vertex not configured — go straight to OpenAI
+      console.log('[AI-Service] Gemini/Vertex not configured. Using OpenAI GPT-4o...');
+      return await chatWithOpenAI(messages, options);
     } else {
       return await chatWithGemini(messages, options);
     }
   } catch (primaryError) {
-    console.warn(`[AI-Service] ${modelChoice} primary engine note (${primaryError.message}). Attempting OpenAI GPT-4o fallback...`);
+    console.warn(`[AI-Service] ${modelChoice} primary engine failed (${primaryError.message}). Attempting OpenAI GPT-4o fallback...`);
     try {
       return await chatWithOpenAI(messages, options);
     } catch (fallbackError) {

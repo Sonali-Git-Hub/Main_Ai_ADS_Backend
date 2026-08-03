@@ -16,6 +16,7 @@ const ChatSession = require('./models/ChatSession');
 const User = require('./models/User');
 const GeneratedPost = require('./models/GeneratedPost');
 const { Notification, Reminder, CreditLog } = require('./models/NotificationReminder');
+const jwt = require('jsonwebtoken');
 
 // ─── Original Modules (existing scraper + seo + creative) ─────────────────────
 const multer = require('multer');
@@ -52,10 +53,111 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ─── Memory fallbacks (for original module compatibility) ──────────────────────
-let memoryWorkspaces = [];
-let memoryContentStore = [];
-let memoryCalendar = [];
+// Memory Store Fallback
+let memoryUsers = [];
+let memoryWorkspaces = [
+  {
+    id: 'ws_001',
+    brandName: 'UWO AI Ads',
+    domainUrl: 'https://aiads.uwo.ai',
+    logoUrl: 'https://api.dicebear.com/7.x/identicon/svg?seed=UWO',
+    brandColors: ['#6366F1', '#8B5CF6', '#06B6D4', '#0F172A'],
+    metaDescription: 'Governed AI-native content marketing, SEO and social-media operations platform.',
+    positioningSummary: 'UWO AI Ads is the premier operating system for agencies and enterprise marketing teams to plan, create, govern, approve, publish, and scale digital content.',
+    voiceGuidelines: { formalityScore: 4, toneKeywords: ['Authoritative', 'Evidence-Based', 'Innovative', 'Direct'], taboos: ['Guaranteed ranking', 'Low effort', 'Spam'] },
+    approvedClaims: [
+      { claimText: 'Reduces long-form SEO draft turnaround time to under 12 seconds', sourceUrl: 'https://uwo.ai/benchmarks', verified: true },
+      { claimText: 'Governed multi-brand workspace with RBAC role control', sourceUrl: 'https://uwo.ai/governance', verified: true }
+    ],
+    restrictedClaims: ['Guaranteed #1 Google ranking', '100% viral outcome guaranteed'],
+    priorityKeywords: ['AI Content Marketing', 'Brand DNA', 'SEO Intelligence', 'Campaign Operations'],
+    contentPillars: ['Enterprise AI', 'SEO Clustering', 'Brand Governance', 'Social Studio Ops']
+  }
+];
+
+let memoryContentStore = [
+  {
+    id: 'cnt_001',
+    workspaceId: 'ws_001',
+    title: 'How AI Ads Transforms Agency Content Production Velocity',
+    type: 'BLOG',
+    status: 'APPROVED',
+    wordCount: 2150,
+    author: 'Senior Copywriter',
+    approver: 'Client Marketing Director',
+    factCheck: { passed: true, score: 100, status: 'VERIFIED' },
+    createdAt: '2026-07-22T10:00:00Z',
+    scheduledDate: '2026-07-28'
+  }
+];
+
+let memoryCalendar = [
+  { id: 'cal_1', title: 'SEO Pillar Launch: Content Velocity', date: '2026-07-27', platform: 'Blog', pillar: 'Enterprise AI', status: 'SCHEDULED', owner: 'SEO Lead' },
+  { id: 'cal_2', title: 'LinkedIn Carousel: Brand DNA 101', date: '2026-07-28', platform: 'LinkedIn', pillar: 'Brand Governance', status: 'APPROVED', owner: 'Senior Copywriter' }
+];
+
+// --- API ENDPOINTS ---
+
+// Auth Endpoints
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
+
+  let user = null;
+  const cleanEmail = email.toLowerCase().trim();
+
+  // 1. Try DB or Memory Fallback
+  try {
+    user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      user = await User.create({ email: cleanEmail, password });
+      console.log(`👤 New user auto-registered in MongoDB: ${cleanEmail}`);
+    } else {
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      }
+    }
+  } catch (error) {
+    console.log('MongoDB Auth Note (Using Memory Store Fallback):', error.message);
+    
+    // Memory Store Fallback
+    user = memoryUsers.find(u => u.email === cleanEmail);
+    if (!user) {
+      user = { id: `usr_${Date.now()}`, email: cleanEmail, password, role: 'AgencyAdmin' };
+      memoryUsers.push(user);
+      console.log(`👤 New user auto-registered in Memory: ${cleanEmail}`);
+    } else {
+      if (user.password !== password) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      }
+    }
+  }
+
+  // 2. Generate Token & Response
+  try {
+    const userId = user._id ? user._id.toString() : String(user.id || `usr_${Date.now()}`);
+    const userRole = user.role || 'AgencyAdmin';
+    const userEmail = user.email || cleanEmail;
+
+    const token = jwt.sign(
+      { userId, email: userEmail, role: userRole },
+      process.env.JWT_SECRET || 'ai_ads_secret_key_123',
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      success: true,
+      token,
+      user: { id: userId, email: userEmail, role: userRole }
+    });
+  } catch (jwtErr) {
+    console.error('Auth generation error:', jwtErr);
+    return res.status(500).json({ success: false, error: `Auth Error: ${jwtErr.message}` });
+  }
+});
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -324,6 +426,34 @@ app.post('/api/workspace/upload-doc', upload.single('file'), async (req, res) =>
   }
 });
 
+app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
+  const { id } = req.params;
+  
+  const strategy = {
+    businessGoal: `Scale Organic Lead Pipeline by 200% & Strengthen Market Positioning`,
+    leadMagnet: `Expert Guide to Maximum Value & Brand Experience`,
+    primaryCta: `Get Started Free — No Credit Card Required`,
+    channelMix: [
+      { label: 'SEO Blogs (Long-Form)', pct: 40, icon: 'Globe', color: 'bg-brand-500' },
+      { label: 'LinkedIn & Founder Copy', pct: 30, icon: 'Linkedin', color: 'bg-blue-500' },
+      { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' },
+      { label: 'Instagram & Reels Copy', pct: 15, icon: 'Instagram', color: 'bg-rose-500' }
+    ]
+  };
+
+  try {
+    await Workspace.findByIdAndUpdate(id, { currentStrategy: strategy }, { new: true });
+  } catch (e) {
+    console.log('MongoDB Update Note for strategy:', e.message);
+  }
+  
+  const index = memoryWorkspaces.findIndex(w => w.id === id);
+  if (index !== -1) {
+    memoryWorkspaces[index].currentStrategy = strategy;
+  }
+
+  res.json({ success: true, strategy });
+});
 app.put('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
   try {
