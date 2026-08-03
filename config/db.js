@@ -3,12 +3,14 @@ const dns = require('dns');
 
 // Fix Windows Node.js DNS SRV resolution issue for mongodb+srv:// by setting public Google & Cloudflare DNS
 try {
-  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  dns.setServers(['8.8.8.8', '1.1.1.1', '1.0.0.1']);
   if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
   }
 } catch (e) {}
 
+
+// Mongoose connection helper with DNS SRV fix
 
 const connectDB = async () => {
   mongoose.set('bufferCommands', false); // Do not buffer commands if disconnected

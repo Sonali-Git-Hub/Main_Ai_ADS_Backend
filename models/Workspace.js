@@ -4,8 +4,9 @@ const WorkspaceSchema = new mongoose.Schema({
   brandName: { type: String, required: true },
   domainUrl: { type: String, required: true },
   logoUrl: { type: String, default: '' },
-  brandColors: [{ type: String }],
+  brandColors: [mongoose.Schema.Types.Mixed],
   targetAudience: [{ type: String }],
+
   brandVoiceTone: {
     formalityScore: { type: Number, default: 4 },
     toneKeywords: [{ type: String }]
