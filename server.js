@@ -5,6 +5,9 @@ const connectDB = require('./config/db');
 const Workspace = require('./models/Workspace');
 const Content = require('./models/Content');
 const Calendar = require('./models/Calendar');
+const User = require('./models/User');
+const jwt = require('jsonwebtoken');
+
 
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
@@ -25,6 +28,7 @@ app.use(cors());
 app.use(express.json());
 
 // Memory Store Fallback
+let memoryUsers = [];
 let memoryWorkspaces = [
   {
     id: 'ws_001',
@@ -67,6 +71,67 @@ let memoryCalendar = [
 ];
 
 // --- API ENDPOINTS ---
+
+// Auth Endpoints
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
+
+  let user = null;
+  const cleanEmail = email.toLowerCase().trim();
+
+  // 1. Try DB or Memory Fallback
+  try {
+    user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      user = await User.create({ email: cleanEmail, password });
+      console.log(`👤 New user auto-registered in MongoDB: ${cleanEmail}`);
+    } else {
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      }
+    }
+  } catch (error) {
+    console.log('MongoDB Auth Note (Using Memory Store Fallback):', error.message);
+    
+    // Memory Store Fallback
+    user = memoryUsers.find(u => u.email === cleanEmail);
+    if (!user) {
+      user = { id: `usr_${Date.now()}`, email: cleanEmail, password, role: 'AgencyAdmin' };
+      memoryUsers.push(user);
+      console.log(`👤 New user auto-registered in Memory: ${cleanEmail}`);
+    } else {
+      if (user.password !== password) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      }
+    }
+  }
+
+  // 2. Generate Token & Response
+  try {
+    const userId = user._id ? user._id.toString() : String(user.id || `usr_${Date.now()}`);
+    const userRole = user.role || 'AgencyAdmin';
+    const userEmail = user.email || cleanEmail;
+
+    const token = jwt.sign(
+      { userId, email: userEmail, role: userRole },
+      process.env.JWT_SECRET || 'ai_ads_secret_key_123',
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      success: true,
+      token,
+      user: { id: userId, email: userEmail, role: userRole }
+    });
+  } catch (jwtErr) {
+    console.error('Auth generation error:', jwtErr);
+    return res.status(500).json({ success: false, error: `Auth Error: ${jwtErr.message}` });
+  }
+});
 
 // Health Check
 app.get('/api/health', (req, res) => {
@@ -166,6 +231,35 @@ app.post('/api/workspace/upload-doc', upload.single('file'), async (req, res) =>
     console.log('Document upload parse error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
+  const { id } = req.params;
+  
+  const strategy = {
+    businessGoal: `Scale Organic Lead Pipeline by 200% & Strengthen Market Positioning`,
+    leadMagnet: `Expert Guide to Maximum Value & Brand Experience`,
+    primaryCta: `Get Started Free — No Credit Card Required`,
+    channelMix: [
+      { label: 'SEO Blogs (Long-Form)', pct: 40, icon: 'Globe', color: 'bg-brand-500' },
+      { label: 'LinkedIn & Founder Copy', pct: 30, icon: 'Linkedin', color: 'bg-blue-500' },
+      { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' },
+      { label: 'Instagram & Reels Copy', pct: 15, icon: 'Instagram', color: 'bg-rose-500' }
+    ]
+  };
+
+  try {
+    await Workspace.findByIdAndUpdate(id, { currentStrategy: strategy }, { new: true });
+  } catch (e) {
+    console.log('MongoDB Update Note for strategy:', e.message);
+  }
+  
+  const index = memoryWorkspaces.findIndex(w => w.id === id);
+  if (index !== -1) {
+    memoryWorkspaces[index].currentStrategy = strategy;
+  }
+
+  res.json({ success: true, strategy });
 });
 
 
