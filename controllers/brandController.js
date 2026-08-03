@@ -2,6 +2,7 @@
  * Brand Intelligence Controller
  * Deep AI analysis of brand identity from URL, document, or manual input.
  */
+const mongoose = require('mongoose');
 const BrandProfile = require('../models/BrandProfile');
 const Workspace = require('../models/Workspace');
 const { generate, generateJSON } = require('../services/aiService');
@@ -141,24 +142,34 @@ Return a JSON object with these exact keys:
       competitors: { list: analysisResult.competitor_landscape },
     };
 
+    delete brandData._id;
+    delete brandData.__v;
+
+    let query = { workspaceId };
+    if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+      query = { $or: [{ workspaceId }, { _id: workspaceId }] };
+    }
+
     const profile = await BrandProfile.findOneAndUpdate(
-      { workspaceId },
-      brandData,
-      { upsert: true, new: true }
+      query,
+      { $set: brandData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // Also update workspace
-    await Workspace.findByIdAndUpdate(workspaceId, {
-      brandName: brandName,
-      faviconUrl: scrapedData.favicon || '',
-      brandColors: analysisResult.color_palette || [],
-      targetAudience: analysisResult.target_audience || '',
-      brandVoiceTone: analysisResult.tone || '',
-      contentPillars: analysisResult.content_angles || [],
-      missionStatement: analysisResult.mission_statement || '',
-      tagline: analysisResult.tagline || '',
-      industryCategory: analysisResult.industry || '',
-    });
+    // Also update workspace if valid ObjectId
+    if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+      await Workspace.findByIdAndUpdate(workspaceId, {
+        brandName: brandName,
+        faviconUrl: scrapedData.favicon || '',
+        brandColors: analysisResult.color_palette || [],
+        targetAudience: analysisResult.target_audience || '',
+        brandVoiceTone: analysisResult.tone || '',
+        contentPillars: analysisResult.content_angles || [],
+        missionStatement: analysisResult.mission_statement || '',
+        tagline: analysisResult.tagline || '',
+        industryCategory: analysisResult.industry || '',
+      });
+    }
 
     console.log(`✅ Brand Intelligence Analysis Complete: "${brandName}" (confidence: ${analysisResult.ai_confidence}%)`);
     res.json({
@@ -176,7 +187,11 @@ Return a JSON object with these exact keys:
 // ─── GET /api/brand/:workspaceId ──────────────────────────────────────────────
 exports.getBrandProfile = async (req, res) => {
   try {
-    const profile = await BrandProfile.findOne({ workspaceId: req.params.workspaceId });
+    const { workspaceId } = req.params;
+    let profile = await BrandProfile.findOne({ workspaceId });
+    if (!profile && mongoose.Types.ObjectId.isValid(workspaceId)) {
+      profile = await BrandProfile.findById(workspaceId);
+    }
     if (!profile) return res.status(404).json({ success: false, error: 'Brand profile not found' });
     res.json({ success: true, profile });
   } catch (err) {
@@ -187,13 +202,28 @@ exports.getBrandProfile = async (req, res) => {
 // ─── PUT /api/brand/:workspaceId ──────────────────────────────────────────────
 exports.updateBrandProfile = async (req, res) => {
   try {
+    const { workspaceId } = req.params;
+
+    // Strip immutable Mongo metadata fields to prevent E11000 duplicate key error
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.__v;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+
+    let query = { workspaceId };
+    if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+      query = { $or: [{ workspaceId }, { _id: workspaceId }] };
+    }
+
     const profile = await BrandProfile.findOneAndUpdate(
-      { workspaceId: req.params.workspaceId },
-      req.body,
-      { upsert: true, new: true }
+      query,
+      { $set: updateData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     res.json({ success: true, profile });
   } catch (err) {
+    console.error('[Update Brand Profile Error]:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 };
