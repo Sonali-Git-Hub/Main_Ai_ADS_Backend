@@ -35,6 +35,7 @@ const WorkspaceSchema = new mongoose.Schema({
   ],
   restrictedClaims: [{ type: String }],
   priorityKeywords: [{ type: String }],
+  currentStrategy: { type: mongoose.Schema.Types.Mixed },
   createdAt: { type: Date, default: Date.now }
 });
 

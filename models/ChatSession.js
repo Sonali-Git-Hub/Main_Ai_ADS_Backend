@@ -43,7 +43,7 @@ const chatSessionSchema = new mongoose.Schema(
       index: true,
     },
     workspaceId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       ref: 'Workspace',
       required: false,
       index: true,

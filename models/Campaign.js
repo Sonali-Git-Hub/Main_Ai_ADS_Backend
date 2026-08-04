@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const CampaignSchema = new mongoose.Schema(
   {
     workspaceId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       ref: 'Workspace',
       required: true,
       index: true,

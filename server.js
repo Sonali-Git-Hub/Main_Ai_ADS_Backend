@@ -45,6 +45,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
     'http://localhost:8081', // Expo web
     process.env.FRONTEND_URL,
   ].filter(Boolean),
@@ -442,33 +444,134 @@ app.post('/api/workspace/upload-doc', upload.single('file'), async (req, res) =>
   }
 });
 
+const { generateJSON } = require('./services/aiService');
+
 app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
   const { id } = req.params;
   
-  const strategy = {
-    businessGoal: `Scale Organic Lead Pipeline by 200% & Strengthen Market Positioning`,
-    leadMagnet: `Expert Guide to Maximum Value & Brand Experience`,
-    primaryCta: `Get Started Free — No Credit Card Required`,
-    channelMix: [
-      { label: 'SEO Blogs (Long-Form)', pct: 40, icon: 'Globe', color: 'bg-brand-500' },
-      { label: 'LinkedIn & Founder Copy', pct: 30, icon: 'Linkedin', color: 'bg-blue-500' },
-      { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' },
-      { label: 'Instagram & Reels Copy', pct: 15, icon: 'Instagram', color: 'bg-rose-500' }
-    ]
-  };
-
   try {
-    await Workspace.findByIdAndUpdate(id, { currentStrategy: strategy }, { new: true });
-  } catch (e) {
-    console.log('MongoDB Update Note for strategy:', e.message);
-  }
-  
-  const index = memoryWorkspaces.findIndex(w => w.id === id);
-  if (index !== -1) {
-    memoryWorkspaces[index].currentStrategy = strategy;
-  }
+    let workspace = null;
+    let brandProfile = null;
 
-  res.json({ success: true, strategy });
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      workspace = await Workspace.findById(id);
+      brandProfile = await BrandProfile.findOne({ workspaceId: id });
+    }
+    
+    // Fallback to memory store if Mongo not found or not using it
+    if (!workspace) {
+      workspace = memoryWorkspaces.find(w => w.id === id || w._id === id) || {};
+    }
+    
+    const brandName = workspace.brandName || brandProfile?.companyName || 'our brand';
+    const industry = workspace.industryCategory || brandProfile?.structuredIdentity?.industry || 'General';
+    const tagline = workspace.tagline || brandProfile?.structuredIdentity?.tagline || '';
+    const pillars = workspace.contentPillars || brandProfile?.structuredIdentity?.content_angles || [];
+    const audienceStr = (workspace.targetAudience || []).join(', ') || brandProfile?.structuredIdentity?.target_audience || 'General public';
+
+    console.log(`[Strategy Engine] Generating AI Marketing Roadmap for: ${brandName} (${industry})...`);
+
+    const prompt = `You are a world-class growth marketer and brand strategist. Generate a highly customized, actionable, premium 30-day marketing strategy and roadmap for the following brand:
+Brand Name: ${brandName}
+Industry: ${industry}
+Tagline: ${tagline}
+Content Pillars: ${pillars.join(', ')}
+Target Audience: ${audienceStr}
+
+You must return a JSON object with this exact structure:
+{
+  "businessGoal": "A single specific, measurable business goal (e.g., 'Scale Organic Lead Pipeline by 200% & Drive Enterprise Demos')",
+  "leadMagnet": "A high-converting lead magnet or conversion offer (e.g., 'The 2026 Enterprise AI Content Playbook (PDF)')",
+  "primaryCta": "The main Call To Action for campaigns",
+  "postingFrequency": "Recommended frequency (e.g., 'Daily' or '3x per week')",
+  "budgetSuggestions": "Strategic budget distribution advice for organic vs paid spend",
+  "bestPlatforms": ["Platform1", "Platform2", "Platform3"],
+  "contentPillars": ["Pillar 1", "Pillar 2", "Pillar 3"],
+  "channelMix": [
+    { "label": "SEO Blogs (Long-Form)", "pct": 40, "icon": "Globe" },
+    { "label": "LinkedIn & Founder Copy", "pct": 30, "icon": "Linkedin" },
+    { "label": "Email Newsletters", "pct": 15, "icon": "Mail" },
+    { "label": "Instagram & Reels Copy", "pct": 15, "icon": "Instagram" }
+  ],
+  "audience": ["Persona 1: Description", "Persona 2: Description"],
+  "funnel": {
+    "awareness": "Top of funnel strategy to drive traffic (using pillars)",
+    "nurturing": "Middle of funnel strategy to capture leads via the lead magnet",
+    "conversion": "Bottom of funnel strategy to convert leads using case studies and testimonials"
+  },
+  "campaignIdeas": [
+    { "title": "Campaign 1 Title", "desc": "Brief campaign concept and goal" },
+    { "title": "Campaign 2 Title", "desc": "Brief campaign concept and goal" }
+  ],
+  "thirtyDayPlan": [
+    { "day": 1, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 1 Topic", "actionItem": "Specific action item for today" },
+    { "day": 2, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 2 Topic", "actionItem": "Specific action item for today" },
+    { "day": 3, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 3 Topic", "actionItem": "Specific action item for today" },
+    { "day": 4, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 4 Topic", "actionItem": "Specific action item for today" },
+    { "day": 5, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 5 Topic", "actionItem": "Specific action item for today" },
+    { "day": 6, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 6 Topic", "actionItem": "Specific action item for today" },
+    { "day": 7, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 7 Topic", "actionItem": "Specific action item for today" },
+    { "day": 8, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 8 Topic", "actionItem": "Specific action item for today" },
+    { "day": 9, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 9 Topic", "actionItem": "Specific action item for today" },
+    { "day": 10, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 10 Topic", "actionItem": "Specific action item for today" },
+    { "day": 11, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 11 Topic", "actionItem": "Specific action item for today" },
+    { "day": 12, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 12 Topic", "actionItem": "Specific action item for today" },
+    { "day": 13, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 13 Topic", "actionItem": "Specific action item for today" },
+    { "day": 14, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 14 Topic", "actionItem": "Specific action item for today" },
+    { "day": 15, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 15 Topic", "actionItem": "Specific action item for today" },
+    { "day": 16, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 16 Topic", "actionItem": "Specific action item for today" },
+    { "day": 17, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 17 Topic", "actionItem": "Specific action item for today" },
+    { "day": 18, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 18 Topic", "actionItem": "Specific action item for today" },
+    { "day": 19, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 19 Topic", "actionItem": "Specific action item for today" },
+    { "day": 20, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 20 Topic", "actionItem": "Specific action item for today" },
+    { "day": 21, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 21 Topic", "actionItem": "Specific action item for today" },
+    { "day": 22, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 22 Topic", "actionItem": "Specific action item for today" },
+    { "day": 23, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 23 Topic", "actionItem": "Specific action item for today" },
+    { "day": 24, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 24 Topic", "actionItem": "Specific action item for today" },
+    { "day": 25, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 25 Topic", "actionItem": "Specific action item for today" },
+    { "day": 26, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 26 Topic", "actionItem": "Specific action item for today" },
+    { "day": 27, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 27 Topic", "actionItem": "Specific action item for today" },
+    { "day": 28, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 28 Topic", "actionItem": "Specific action item for today" },
+    { "day": 29, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 29 Topic", "actionItem": "Specific action item for today" },
+    { "day": 30, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 30 Topic", "actionItem": "Specific action item for today" }
+  ]
+}`;
+
+    const strategy = await generateJSON(prompt, { temperature: 0.75 });
+
+    if (!strategy) {
+      return res.status(500).json({ success: false, error: 'AI Strategy synthesis failed. Please try again.' });
+    }
+
+    // Ensure colors match channel mix labels dynamically for frontend render
+    if (strategy.channelMix) {
+      strategy.channelMix = strategy.channelMix.map(ch => {
+        let color = 'bg-brand-500';
+        if (ch.label.toLowerCase().includes('linked') || ch.icon === 'Linkedin') color = 'bg-blue-500';
+        else if (ch.label.toLowerCase().includes('email') || ch.icon === 'Mail') color = 'bg-amber-500';
+        else if (ch.label.toLowerCase().includes('insta') || ch.icon === 'Instagram') color = 'bg-rose-500';
+        return { ...ch, color };
+      });
+    }
+
+    try {
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        await Workspace.findByIdAndUpdate(id, { currentStrategy: strategy }, { new: true });
+      }
+    } catch (e) {
+      console.log('MongoDB Update Note for strategy:', e.message);
+    }
+    
+    const index = memoryWorkspaces.findIndex(w => w.id === id || w._id === id);
+    if (index !== -1) {
+      memoryWorkspaces[index].currentStrategy = strategy;
+    }
+
+    res.json({ success: true, strategy });
+  } catch (err) {
+    console.error('[Strategy Engine] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 app.put('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
