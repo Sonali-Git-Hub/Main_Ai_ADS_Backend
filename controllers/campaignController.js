@@ -351,7 +351,7 @@ Return JSON: { "caption": "...", "hashtags": ["#tag1", "#tag2"], "cta": "..." }`
       updateData.generatedImage = `https://picsum.photos/seed/${post._id}/800/800`;
     }
 
-    const updatedPost = await CampaignPost.findByIdAndUpdate(req.params.postId, updateData, { new: true });
+    const updatedPost = await CampaignPost.findByIdAndUpdate(req.params.postId, updateData, { returnDocument: 'after' });
     res.json({ success: true, post: updatedPost });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -367,7 +367,7 @@ exports.updatePostStatus = async (req, res) => {
     if (approvalStatus) updateData.approvalStatus = approvalStatus;
     if (notes) updateData.notes = notes;
 
-    const post = await CampaignPost.findByIdAndUpdate(req.params.postId, updateData, { new: true });
+    const post = await CampaignPost.findByIdAndUpdate(req.params.postId, updateData, { returnDocument: 'after' });
     if (!post) return res.status(404).json({ success: false, error: 'Post not found' });
     res.json({ success: true, post });
   } catch (err) {

@@ -145,7 +145,7 @@ exports.renameSession = async (req, res) => {
     const session = await ChatSession.findOneAndUpdate(
       { sessionId: req.params.sessionId },
       { title },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
     res.json({ success: true, session });

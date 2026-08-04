@@ -191,23 +191,35 @@ app.use('/api/content', contentRoutes);
 const contentController = require('./controllers/contentController');
 app.post('/api/seo/brief/generate', contentController.generateSeoBrief);
 
-// ─── LEGACY WORKSPACE / BRAND DNA ENDPOINTS (backward compatible) ──────────────
+// ─── LEGACY WORKSPACE / BRAND DNA ENDPOINTS (backward compatible & Multi-Tenant Isolated) ──────────────
 app.get('/api/workspace/list', async (req, res) => {
   try {
+    const userEmail = (req.query.userEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
+    let query = {};
+    if (userEmail) {
+      query.userEmail = userEmail;
+    }
+
     if (mongoose.connection.readyState === 1) {
-      const dbWorkspaces = await Workspace.find().sort({ createdAt: -1 });
-      if (dbWorkspaces && dbWorkspaces.length > 0) return res.json({ success: true, workspaces: dbWorkspaces });
+      const dbWorkspaces = await Workspace.find(query).sort({ createdAt: -1 });
+      return res.json({ success: true, workspaces: dbWorkspaces });
     }
   } catch (err) {
     console.log('MongoDB Read Fallback:', err.message);
   }
-  res.json({ success: true, workspaces: memoryWorkspaces });
+
+  const userEmail = (req.query.userEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
+  const filteredMemory = userEmail 
+    ? memoryWorkspaces.filter(w => (w.userEmail || '').toLowerCase() === userEmail)
+    : memoryWorkspaces;
+
+  res.json({ success: true, workspaces: filteredMemory });
 });
 
 // ─── SCRAPE PREVIEW ENDPOINT (DOES NOT SAVE TO DB UNTIL LOCK BUTTON CLICKED) ────
 app.post('/api/workspace/scrape-preview', async (req, res) => {
   try {
-    const { domainUrl, brandName } = req.body;
+    const { domainUrl, brandName, userEmail } = req.body;
     if (!domainUrl) return res.status(400).json({ success: false, error: 'Domain URL is required' });
 
     console.log(`🌐 [SCRAPER-PREVIEW] Generating non-persisted Brand DNA preview for: ${domainUrl}`);
@@ -215,6 +227,7 @@ app.post('/api/workspace/scrape-preview', async (req, res) => {
 
     const previewWorkspace = {
       tempId: `preview_${Date.now()}`,
+      userEmail: (userEmail || '').toLowerCase().trim(),
       brandName: brandDna.brandName || brandName || 'New Brand',
       companyName: brandDna.companyName || brandDna.brandName,
       parentCompany: brandDna.parentCompany || brandDna.brandName,
@@ -261,7 +274,10 @@ app.post('/api/workspace/save-dna', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid brand workspace payload' });
     }
 
+    const cleanEmail = (workspaceData.userEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
+
     const dbPayload = {
+      userEmail: cleanEmail,
       brandName: workspaceData.brandName || 'New Brand',
       companyName: workspaceData.companyName || workspaceData.brandName,
       parentCompany: workspaceData.parentCompany || workspaceData.brandName,
@@ -297,7 +313,7 @@ app.post('/api/workspace/save-dna', async (req, res) => {
       if (mongoose.connection.readyState === 1) {
         const dbCreated = await Workspace.create(dbPayload);
         savedWorkspace = dbCreated;
-        console.log(`🔒 Brand DNA Memory Saved & Locked to MongoDB Atlas: ${savedWorkspace.brandName}`);
+        console.log(`🔒 Brand DNA Memory Saved for user [${cleanEmail}]: ${savedWorkspace.brandName}`);
       }
     } catch (dbErr) {
       console.log('MongoDB Write Fallback Note:', dbErr.message);

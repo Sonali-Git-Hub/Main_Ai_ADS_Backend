@@ -153,7 +153,7 @@ Return a JSON object with these exact keys:
     const profile = await BrandProfile.findOneAndUpdate(
       query,
       { $set: brandData },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     // Also update workspace if valid ObjectId
@@ -211,6 +211,33 @@ exports.updateBrandProfile = async (req, res) => {
     delete updateData.createdAt;
     delete updateData.updatedAt;
 
+    // Helper to sanitize color arrays and handle object/JSON string fallbacks cleanly
+    const sanitizeColors = (arr) => {
+      if (!arr) return [];
+      if (typeof arr === 'string') {
+        try {
+          arr = JSON.parse(arr);
+        } catch (e) {
+          return [arr];
+        }
+      }
+      if (!Array.isArray(arr)) return [];
+      return arr.map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') return item.hex || item.color || item.code || '#6366F1';
+        return String(item);
+      });
+    };
+
+    if (updateData.brandColors) {
+      updateData.brandColors = sanitizeColors(updateData.brandColors);
+    }
+    if (updateData.structuredIdentity) {
+      if (updateData.structuredIdentity.color_palette) {
+        updateData.structuredIdentity.color_palette = sanitizeColors(updateData.structuredIdentity.color_palette);
+      }
+    }
+
     let query = { workspaceId };
     if (mongoose.Types.ObjectId.isValid(workspaceId)) {
       query = { $or: [{ workspaceId }, { _id: workspaceId }] };
@@ -219,7 +246,7 @@ exports.updateBrandProfile = async (req, res) => {
     const profile = await BrandProfile.findOneAndUpdate(
       query,
       { $set: updateData },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
     res.json({ success: true, profile });
   } catch (err) {
