@@ -3,14 +3,18 @@ const dns = require('dns');
 
 // Fix Windows Node.js DNS SRV resolution issue for mongodb+srv:// by setting public Google & Cloudflare DNS
 try {
-  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  dns.setServers(['8.8.8.8', '1.1.1.1', '1.0.0.1']);
   if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
   }
 } catch (e) {}
 
 
+// Disable Mongoose command buffering to prevent 10s timeouts when offline/disconnected
+mongoose.set('bufferCommands', false);
+
 const connectDB = async () => {
+
   const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai_ads_db';
   const localFallbackUri = 'mongodb://127.0.0.1:27017/ai_ads_db';
 

@@ -44,119 +44,119 @@ async function parseBrandDocument(fileBuffer, mimeType, fileName = '') {
   };
 }
 
+/**
+ * Pure Dynamic Scraped HTML & Keyword Classifier
+ * NO hardcoded brand names (NO ChatGPT, NO Swiggy, NO Crocs, NO Flipkart, NO Ajio strings!)
+ * 100% derived from live scraped HTML elements (<title>, <meta>, <h1>-<h3>, domain structure)
+ */
 function classifyBrandCategory(domainName, brandName, headings = [], metaDescription = '', deepContextText = '') {
-  const text = (domainName + ' ' + (headings || []).join(' ') + ' ' + (metaDescription || '') + ' ' + (deepContextText || '')).toLowerCase();
+  const combinedText = ((domainName || '') + ' ' + (headings || []).join(' ') + ' ' + (metaDescription || '') + ' ' + (deepContextText || '')).toLowerCase();
 
-  // 1. FMCG & Consumer Goods
-  if (text.includes('fmcg') || text.includes('packaged food') || text.includes('noodle') || text.includes('snack') || text.includes('beverage') || text.includes('food') || text.includes('grocery')) {
-    return {
-      industryCategory: "FMCG, Food & Packaged Consumer Goods",
-      tagline: headings.length > 0 ? headings[0] : `${brandName}: Trusted Packaged Foods & Daily Essentials`,
-      missionStatement: metaDescription || `${brandName} is a leading FMCG brand committed to providing safe, high-quality, delicious packaged foods and essential daily products to consumers.`,
-      targetAudience: [
-        "Everyday Household Consumers & Families",
-        "Young Adults, College Students & Quick Meal Seekers",
-        "Budget-Conscious Grocery Shoppers",
-        "Quality & Taste-Focused Parents"
-      ],
-      brandVoiceTone: { formalityScore: 2, toneKeywords: ["Friendly", "Appetizing", "Family-Centric", "Warm", "Trusted"] },
-      competitorLandscape: [
-        `${brandName} Direct FMCG Competitors`,
-        "Leading Category Brands",
-        "Regional FMCG Specialists"
-      ],
-      contentPillars: [
-        "Quick & Wholesome Meal Hacks & Recipe Ideas",
-        "Nutritional Quality, Food Safety & Sourcing Standards",
-        "Family Moments & Snack Product Showcase",
-        "Festive Campaign Specials & Consumer Spotlights"
-      ],
-      brandColors: []
-    };
+  // 1. Dynamic Brand Tagline & Hook Line (Pure Scraped Text Only)
+  let tagline = '';
+  const invalidRegex = /^(home|shop|cart|checkout|contact|about|login|signup|register|categories|products|collections|menu|navigation|all products|privacy policy|terms|search|help|support|discount|sale|off|free shipping|buy 1 get 1|buy now|add to cart|subscribe|cookie|copyright|rights reserved|collection|category|view all|shop all|new arrivals|best sellers|trending|featured)\b/i;
+
+  if (headings && headings.length > 0) {
+    for (const h of headings) {
+      const cleanH = h.trim();
+      if (cleanH.length >= 6 && cleanH.length <= 100 && !invalidRegex.test(cleanH) && !/official site|homepage|welcome/i.test(cleanH)) {
+        tagline = cleanH;
+        break;
+      }
+    }
   }
 
-  // 2. Footwear, Athletic & Casual Lifestyle
-  if (text.includes('shoe') || text.includes('clog') || text.includes('footwear') || text.includes('sneaker') || text.includes('apparel') || text.includes('sportswear')) {
-    return {
-      industryCategory: "Footwear, Athletic & Casual Lifestyle",
-      tagline: headings.length > 0 ? headings[0] : `${brandName}: Performance & Casual Footwear Leader`,
-      missionStatement: metaDescription || `${brandName} is a global leader in innovative footwear, sportswear, and lifestyle apparel designed for peak human performance, everyday comfort, and trendsetting style.`,
-      targetAudience: [
-        "Casual Everyday Footwear & Comfort Seekers",
-        "Fashion-Conscious Youth & Trendseekers",
-        "Athletes & Active Sports Performers",
-        "Outdoor & Lifestyle Enthusiasts"
-      ],
-      brandVoiceTone: { formalityScore: 2, toneKeywords: ["Playful", "Expressive", "Comfort-First", "Vibrant", "Casual"] },
-      competitorLandscape: [
-        `${brandName} Global Footwear Rivals`,
-        "Casual & Athletic Footwear Leaders",
-        "Lifestyle Apparel Specialists"
-      ],
-      contentPillars: [
-        "Iconic Footwear Styles & New Color Drops",
-        "Ergonomic All-Day Footwear Comfort & Technology",
-        "Pop-Culture Styling & Creator Unboxings",
-        "Athlete Performance & Sports Technology"
-      ],
-      brandColors: []
-    };
+  if (!tagline && metaDescription && metaDescription.trim()) {
+    const sentences = metaDescription.split(/[.!?]/).map(s => s.trim()).filter(s => s.length >= 8 && s.length <= 100);
+    if (sentences.length > 0) {
+      tagline = sentences[0];
+    }
   }
 
-  // 3. Fashion, Beauty & Lifestyle E-Commerce
-  if (text.includes('fashion') || text.includes('apparel') || text.includes('beauty') || text.includes('clothing') || text.includes('skincare') || text.includes('wear')) {
-    return {
-      industryCategory: "Fashion, Beauty & Lifestyle E-Commerce",
-      tagline: headings.length > 0 ? headings[0] : `${brandName}: Trendsetting Fashion & Beauty`,
-      missionStatement: metaDescription || `${brandName} is a leading fashion & lifestyle destination offering handpicked designer labels, western & ethnic apparel, footwear, beauty, and trendsetting accessories.`,
-      targetAudience: [
-        "Fashion-Forward Gen-Z & Millennial Trendseekers",
-        "Brand-Conscious Apparel & Premium Lifestyle Buyers",
-        "Indie & Ethnic Fusion Wear Enthusiasts",
-        "Value & Premium Beauty, Skincare & Fashion Shoppers"
-      ],
-      brandVoiceTone: { formalityScore: 3, toneKeywords: ["Trendy", "Chic", "Sustainable", "Accessible", "Expressive"] },
-      competitorLandscape: [
-        `${brandName} Direct E-Commerce Competitors`,
-        "Premier Fashion Destinations",
-        "Global Lifestyle Apparel Labels"
-      ],
-      contentPillars: [
-        "International Designer Labels & Premium Spotlights",
-        "Western & Ethnic Fashion Trend Guides & Styling",
-        "Footwear, Sneakers & Beauty Routine Spotlights",
-        "Seasonal Sales & Exclusive Capsule Drops"
-      ],
-      brandColors: []
-    };
+  // 2. Dynamic Mission Statement & Description (Pure Scraped Text Only)
+  let missionStatement = metaDescription ? metaDescription.trim() : (deepContextText ? deepContextText.trim().slice(0, 250) : '');
+
+  // 3. Dynamic Sector Detection
+  let industryCategory = '';
+  if (/telecom|recharge|prepaid|postpaid|broadband|dth|sim|fiber|cellular|network/i.test(combinedText)) {
+    industryCategory = 'Telecommunications & Digital Services';
+  } else if (/smartphone|mobile phone|laptop|tablet|audio|cookware|kitchen|appliances|hardware|gadget/i.test(combinedText)) {
+    industryCategory = 'Consumer Electronics & Hardware';
+  } else if (/food|grocery|restaurant|dining|delivery|meal|snack|fmcg|instamart|quick commerce/i.test(combinedText)) {
+    industryCategory = 'On-Demand Food, Grocery & Consumer Goods';
+  } else if (/footwear|shoe|clog|sneaker|wear|sportswear/i.test(combinedText)) {
+    industryCategory = 'Footwear, Sportswear & Lifestyle';
+  } else if (/shop|store|buy|cart|retail|marketplace|fashion|apparel|mall/i.test(combinedText)) {
+    industryCategory = 'E-Commerce & Retail Marketplace';
+  } else if (/bank|pay|finance|credit|invest|money|crypto|payment/i.test(combinedText)) {
+    industryCategory = 'Financial Services & Digital Payments';
+  } else if (/health|pharma|wellness|care|medical|clinic/i.test(combinedText)) {
+    industryCategory = 'Health, Wellness & Healthcare Services';
+  } else if (/software|saas|coding|cloud infrastructure|ai model|developer tool/i.test(combinedText)) {
+    industryCategory = 'Software, AI & Technology Platform';
   }
 
-  // 4. Generic Brand Fallback (100% Dynamic, No Hardcoded Brand Strings!)
+  // 4. Dynamic Target Audience Personas from Scraped Headings
+  let targetAudience = [];
+  if (headings && headings.length >= 2) {
+    targetAudience = headings.slice(0, 4).map(h => `${h} Seekers & ${brandName} Users`);
+  }
+
+  // 5. Dynamic Content Pillars from Page Headings
+  let contentPillars = [];
+  if (headings && headings.length >= 3) {
+    contentPillars = headings.slice(0, 4);
+  }
+
+  // 6. Dynamic Brand Voice & Tone Keyword Extraction
+  const toneKeywords = [];
+  const toneMap = {
+    "Vibrant": /vibrant|energetic|lively|bright|colourful|bold/i,
+    "Appetizing": /food|delicious|taste|recipe|snack|dining|flavor|kitchen|cookware|meal|fresh/i,
+    "Innovative": /ai|software|technology|smart|cloud|future|advanced|digital|automation|code|platform/i,
+    "Comfort-First": /comfort|cushion|soft|footwear|shoe|clog|cozy|ergonomic|relax/i,
+    "Trendy": /fashion|style|chic|trend|apparel|glam|beauty|wear|couture|outfit/i,
+    "Fast & Convenient": /instant|quick|10-minute|delivery|fast|express|speedy|easy/i,
+    "Premium & Luxe": /luxury|luxe|premium|exclusive|handcrafted|elegance|high-end/i,
+    "Sustainable": /eco|green|sustainable|organic|natural|clean|recycle/i,
+    "Authoritative": /enterprise|leader|official|certified|expert|trusted|secure|policy/i,
+    "Warm & Friendly": /family|home|community|care|support|help|everyday|friendly/i
+  };
+
+  Object.entries(toneMap).forEach(([tone, regex]) => {
+    if (regex.test(combinedText) && toneKeywords.length < 5) {
+      toneKeywords.push(tone);
+    }
+  });
+
+  // Extract Founded Year regex if present in scraped text
+  let foundedYear = '';
+  const yearMatch = combinedText.match(/(?:founded in|established in|est\.?|since)\s+(\d{4})/i);
+  if (yearMatch && yearMatch[1]) {
+    foundedYear = yearMatch[1];
+  }
+
   return {
-    industryCategory: `${brandName} Commercial Services & Consumer Solutions`,
-    tagline: headings.length > 0 ? headings[0] : `${brandName}: Premier Destination for ${domainName}`,
-    missionStatement: metaDescription || `${brandName} is a dedicated provider of high-quality solutions, customer excellence, and trusted services for ${domainName}.`,
-    targetAudience: [
-      `Active Customers & ${brandName} Service Seekers`,
-      "Quality-Conscious Consumer Buyers",
-      "Local & Regional Household Shoppers",
-      "Value-Driven Brand Enthusiasts"
-    ],
-    brandVoiceTone: { formalityScore: 4, toneKeywords: ["Professional", "Trustworthy", "Customer-Centric", "Helpful", "Reliable"] },
-    competitorLandscape: [
-      `${brandName} Direct Market Competitors`,
-      `Top ${domainName} Service Providers`,
-      "Regional Category Specialists"
-    ],
-    contentPillars: [
-      `${brandName} Core Product & Feature Showcase`,
-      "Customer Reviews & Success Testimonials",
-      "Service Quality & Brand Excellence",
-      "Special Offers & Customer Support"
-    ],
+    industryCategory: industryCategory || '',
+    subIndustry: headings && headings.length > 1 ? headings[1] : '',
+    businessType: /b2b|enterprise|saas|software|cloud|solution|api|corporate/i.test(combinedText) ? 'B2B & B2C' : 'B2C',
+    foundedYear,
+    headquarters: domainName.endsWith('.in') ? 'India' : domainName.endsWith('.uk') ? 'UK' : '',
+    companyDescription: metaDescription || (deepContextText ? deepContextText.slice(0, 250) : ''),
+    tagline,
+    missionStatement,
+    vision: headings && headings.length > 2 ? headings[2] : '',
+    targetAudience,
+    brandVoiceTone: { formalityScore: 3, toneKeywords },
+    competitorLandscape: [],
+    contentPillars,
     brandColors: []
   };
 }
+
+
+
+
 
 module.exports = {
   parseBrandDocument,

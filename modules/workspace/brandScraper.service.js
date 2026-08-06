@@ -1,5 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { Vibrant } = require('node-vibrant/node');
+const { searchTavily, extractTavilyUrl } = require('../../services/tavilyService');
 
 function deduplicateAndFilterColors(colors) {
   const socialBlacklist = [
@@ -15,7 +17,6 @@ function deduplicateAndFilterColors(colors) {
     if (!col || typeof col !== 'string') continue;
     const upper = col.trim().toUpperCase();
     if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(upper)) continue;
-
     if (socialBlacklist.includes(upper)) continue;
 
     let isTooSimilar = false;
@@ -43,7 +44,6 @@ function extractCleanBrandName(rawHost, overrideName = '') {
   const h = rawHost.replace(/^(www\d*|m|store|shop|en-in|in|us|uk)\./i, '');
   const basePart = h.split('.')[0];
   
-  // Format brand name naturally (e.g., buyhawkins -> Buyhawkins, coca-cola -> Coca-Cola)
   return basePart
     .split(/[-_]/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -78,80 +78,107 @@ function generateDynamicBrandPalette(domainName) {
   ];
 }
 
-function extractAccurateBrandColors(cleanUrl, domainName, $, html) {
-  const extractedCandidateColors = [];
+async function extractLogoPixelColors(logoUrl) {
+  if (!logoUrl) return [];
+  try {
+    const palette = await Vibrant.from(logoUrl).getPalette();
+    const hexes = [];
+    ['Vibrant', 'Muted', 'DarkVibrant', 'LightVibrant', 'DarkMuted'].forEach(key => {
+      if (palette[key] && palette[key].hex) {
+        hexes.push(palette[key].hex.toUpperCase());
+      }
+    });
+    return hexes;
+  } catch (e) {
+    return [];
+  }
+}
+
+function extractSchemaJsonLd($) {
+  let schemaLogo = '';
+  let schemaName = '';
+  let schemaSameAs = [];
+
+  if (!$) return { schemaLogo, schemaName, schemaSameAs };
+
+  $('script[type="application/ld+json"]').each((i, el) => {
+    try {
+      const json = JSON.parse($(el).html() || '{}');
+      const items = Array.isArray(json) ? json : [json];
+      items.forEach(item => {
+        if (item['@type'] === 'Organization' || item['@type'] === 'Corporation' || item['@type'] === 'Brand' || item['@type'] === 'WebSite') {
+          if (item.logo) {
+            schemaLogo = typeof item.logo === 'string' ? item.logo : (item.logo.url || '');
+          }
+          if (item.name) schemaName = item.name;
+          if (Array.isArray(item.sameAs)) schemaSameAs = item.sameAs;
+        }
+      });
+    } catch (e) {}
+  });
+
+  return { schemaLogo, schemaName, schemaSameAs };
+}
+
+async function extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl = '') {
+  const logoBrandHexes = [];
+  const tokenBrandHexes = [];
+
+  // Extract pixel colors from logo image via node-vibrant
+  if (logoUrl) {
+    const pixelColors = await extractLogoPixelColors(logoUrl);
+    pixelColors.forEach(c => logoBrandHexes.push(c));
+  }
 
   if ($) {
-    // 1. Meta Theme-Color & Tile Color
-    const themeMeta = $('meta[name="theme-color"]').attr('content') || 
-                      $('meta[name="msapplication-TileColor"]').attr('content') ||
-                      $('meta[name="apple-mobile-web-app-status-bar-style"]').attr('content');
-    if (themeMeta && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(themeMeta.trim())) {
-      extractedCandidateColors.push(themeMeta.trim().toUpperCase());
-    }
-
-    // 2. SVG Logo & Path Fill/Stroke Attributes
-    $('svg.logo, svg[class*="logo"], a[class*="logo"] svg, header svg, nav svg, .brand svg').each((i, el) => {
+    // 1. Vector SVG Logo fill & stroke values
+    $('svg.logo, svg[class*="logo"], a[class*="logo"] svg, header svg[class*="logo"], nav svg[class*="logo"], .brand-logo svg, #logo svg').each((i, el) => {
       const fill = $(el).attr('fill') || $(el).find('path').attr('fill');
       const stroke = $(el).attr('stroke') || $(el).find('path').attr('stroke');
       [fill, stroke].forEach(c => {
         if (c && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(c.trim())) {
-          extractedCandidateColors.push(c.trim().toUpperCase());
+          logoBrandHexes.push(c.trim().toUpperCase());
         }
       });
     });
 
-    // 3. CSS Variables (--primary, --brand, --main, --accent)
+    // 2. Meta Theme-Color & Tile Color
+    const themeMeta = $('meta[name="theme-color"]').attr('content') || 
+                      $('meta[name="msapplication-TileColor"]').attr('content') ||
+                      $('meta[name="apple-mobile-web-app-status-bar-style"]').attr('content');
+    if (themeMeta && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(themeMeta.trim())) {
+      logoBrandHexes.push(themeMeta.trim().toUpperCase());
+    }
+
+    // 3. Brand Design Tokens / CSS Variables (--primary-color, --brand-color, --logo-color)
     $('style').each((i, el) => {
       const styleText = $(el).html() || '';
-      const varMatches = styleText.match(/--(?:primary|brand|theme|main|accent|color)(?:-color)?:\s*(#[A-Fa-f0-9]{6})/gi) || [];
+      const varMatches = styleText.match(/--(?:primary|brand|logo|theme-main|accent)(?:-color)?:\s*(#[A-Fa-f0-9]{6})/gi) || [];
       varMatches.forEach(m => {
         const hex = m.match(/#[A-Fa-f0-9]{6}/i)?.[0];
-        if (hex) extractedCandidateColors.push(hex.toUpperCase());
+        if (hex) tokenBrandHexes.push(hex.toUpperCase());
       });
     });
-
-    // 4. Header, Nav, CTA Button, Hero Inline CSS Styles
-    $('header, nav, .navbar, button.btn-primary, .cta-button, .hero, .banner, footer').each((i, el) => {
-      const styleAttr = $(el).attr('style') || '';
-      const bgMatch = styleAttr.match(/background(?:-color)?:\s*(#[A-Fa-f0-9]{6})/i);
-      const colorMatch = styleAttr.match(/(?:^|;)color:\s*(#[A-Fa-f0-9]{6})/i);
-
-      if (bgMatch && bgMatch[1]) extractedCandidateColors.push(bgMatch[1].toUpperCase());
-      if (colorMatch && colorMatch[1]) extractedCandidateColors.push(colorMatch[1].toUpperCase());
-    });
   }
 
-  // 5. HTML Regex Hex Pattern Match (Filtered against social media icons & generic black/white)
-  if (html) {
-    const socialBlacklist = [
-      '#E60023', '#BD081C', '#BD081D', '#FF4500', '#B92B27',
-      '#1DA1F2', '#1A91DA', '#1877F2', '#3B5998', '#0A66C2',
-      '#0077B5', '#FF0000', '#282828', '#E1306C', '#C13584',
-      '#833AB4', '#000000', '#FFFFFF', '#F8FAFC', '#0F172A',
-      '#E2E8F0', '#CCCCCC', '#333333', '#666666', '#999999', '#111111'
-    ];
+  const combinedCandidates = [...logoBrandHexes, ...tokenBrandHexes];
+  const cleanHexes = deduplicateAndFilterColors(combinedCandidates);
 
-    const allHexes = html.match(/#(?:[A-Fa-f0-9]{6})/gi) || [];
-    const counts = {};
-    allHexes.forEach(h => {
-      const upper = h.toUpperCase();
-      if (!socialBlacklist.includes(upper)) {
-        counts[upper] = (counts[upper] || 0) + 1;
-      }
-    });
-
-    const sortedHexes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    sortedHexes.slice(0, 5).forEach(h => extractedCandidateColors.push(h));
+  let finalHexes = [];
+  if (cleanHexes.length >= 2) {
+    finalHexes = cleanHexes.slice(0, 4);
+  } else {
+    finalHexes = generateDynamicBrandPalette(domainName);
   }
 
-  const cleanColors = deduplicateAndFilterColors(extractedCandidateColors);
-  if (cleanColors.length >= 2) {
-    return cleanColors.slice(0, 4);
-  }
+  const roles = ['Brand Primary', 'Brand Secondary', 'Accent', 'Dark Neutral'];
+  const names = ['Primary', 'Secondary', 'Accent', 'Dark'];
 
-  // 6. 100% Dynamic HSL Color Generator for Any URL
-  return generateDynamicBrandPalette(domainName);
+  return finalHexes.map((hex, index) => ({
+    name: names[index] || `Brand Color ${index + 1}`,
+    hex: hex.toUpperCase(),
+    role: roles[index] || 'Brand Accent'
+  }));
 }
 
 async function crawlBrandContext(cleanUrl, $) {
@@ -161,7 +188,7 @@ async function crawlBrandContext(cleanUrl, $) {
   if (!$) return { internalPages, deepContextText: '' };
 
   const baseUrl = new URL(cleanUrl);
-  const priorityPatterns = [/about/i, /who-we-are/i, /our-story/i, /company/i, /services/i, /products/i];
+  const priorityPatterns = [/about/i, /who-we-are/i, /our-story/i, /company/i, /services/i, /products/i, /contact/i, /solutions/i, /features/i, /overview/i, /history/i];
 
   $('a[href]').each((i, el) => {
     const href = $(el).attr('href');
@@ -178,9 +205,11 @@ async function crawlBrandContext(cleanUrl, $) {
     } catch (e) {}
   });
 
-  const selectedPages = internalPages.slice(0, 5);
+  // Crawl up to 6 key internal pages
+  const selectedPages = internalPages.slice(0, 6);
 
-  for (const pageUrl of selectedPages) {
+  // Concurrently fetch all internal pages
+  await Promise.all(selectedPages.map(async (pageUrl) => {
     try {
       const response = await axios.get(pageUrl, {
         timeout: 5000,
@@ -188,30 +217,31 @@ async function crawlBrandContext(cleanUrl, $) {
       });
       const page$ = cheerio.load(response.data);
 
-      page$('script, style, nav, footer, iframe').remove();
+      page$('script, style, nav, footer, iframe, noscript').remove();
       const pageHeadings = [];
       page$('h1, h2, h3').each((i, el) => {
         const txt = page$(el).text().trim();
-        if (txt.length > 10 && txt.length < 150) pageHeadings.push(txt);
+        if (txt.length > 5 && txt.length < 150) pageHeadings.push(txt);
       });
 
       const pageParagraphs = [];
-      page$('p').each((i, el) => {
+      page$('p, article, section').each((i, el) => {
         const txt = page$(el).text().trim();
-        if (txt.length > 30 && txt.length < 300) pageParagraphs.push(txt);
+        if (txt.length > 25 && txt.length < 500) pageParagraphs.push(txt);
       });
 
       if (pageHeadings.length > 0 || pageParagraphs.length > 0) {
-        crawledTexts.push(`[Source: ${pageUrl}] ${pageHeadings.join(' | ')} ${pageParagraphs.slice(0, 3).join(' ')}`);
+        crawledTexts.push(`[Page URL: ${pageUrl}]\nHeadings: ${pageHeadings.join(' | ')}\nContent: ${pageParagraphs.slice(0, 10).join(' ')}`);
       }
     } catch (e) {}
-  }
+  }));
 
   return {
     internalPages: selectedPages,
     deepContextText: crawledTexts.join('\n\n')
   };
 }
+
 
 async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let cleanUrl = urlInput.trim();
@@ -233,6 +263,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let $ = null;
   let crawledSources = ['WEBSITE_HOMEPAGE'];
 
+  // STEP 1: Fast HTTP Fetch & Anti-Bot Bypass
   try {
     const response = await axios.get(cleanUrl, {
       timeout: 8000,
@@ -245,27 +276,86 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     html = response.data;
     $ = cheerio.load(html);
   } catch (err) {
-    console.log(`Live HTTP fetch note for ${cleanUrl}: ${err.message}`);
+    console.log(`Live HTTP fetch note for ${cleanUrl}: ${err.message}. Triggering Tavily AI Web Engine...`);
+    const tavilyExtract = await extractTavilyUrl(cleanUrl);
+    if (tavilyExtract && tavilyExtract.rawContent) {
+      html = tavilyExtract.rawContent;
+      $ = cheerio.load(html);
+      crawledSources.push('TAVILY_ANTI_BOT_BYPASS');
+    } else {
+      const tavilySearch = await searchTavily(`brand positioning and official details for ${domainName}`);
+      if (tavilySearch && tavilySearch.answer) {
+        html = `<html><body><h1>${tavilySearch.answer}</h1></body></html>`;
+        $ = cheerio.load(html);
+        crawledSources.push('TAVILY_DEEP_SEARCH');
+      }
+    }
   }
 
-  let metaTitle = '';
-  let metaDescription = '';
-  let faviconUrl = `https://www.google.com/s2/favicons?domain=${domainName}&sz=128`;
-  let headings = [];
-  let socialPlatforms = [];
-  let emails = [];
-  let phones = [];
+  // STEP 2: Dual-Mode Logo Extraction (Google Favicon 128px + Clearbit + Schema JSON-LD + OpenGraph)
+  const rootDomain = domainName.replace(/^www\./i, '');
+  const googleFaviconUrl = `https://www.google.com/s2/favicons?domain=${rootDomain}&sz=128`;
+  const clearbitLogoUrl = `https://logo.clearbit.com/${rootDomain}`;
+  let faviconUrl = googleFaviconUrl;
+  let logoUrl = googleFaviconUrl; // Primary high-confidence fallback
+
+  const { schemaLogo, schemaName, schemaSameAs } = extractSchemaJsonLd($);
+  let parsedLogo = schemaLogo;
 
   if ($) {
-    metaTitle = $('title').text().trim() || $('meta[property="og:title"]').attr('content') || '';
-    metaDescription = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content') || '';
-
     const linkFavicon = $('link[rel*="icon"]').attr('href') || $('link[rel="apple-touch-icon"]').attr('href');
     if (linkFavicon) {
       if (linkFavicon.startsWith('http')) faviconUrl = linkFavicon;
       else if (linkFavicon.startsWith('//')) faviconUrl = 'https:' + linkFavicon;
       else faviconUrl = cleanUrl.replace(/\/$/, '') + (linkFavicon.startsWith('/') ? linkFavicon : '/' + linkFavicon);
     }
+
+    if (!parsedLogo) {
+      parsedLogo = $('meta[property="og:image"]').attr('content') ||
+                   $('header img[src*="logo"]').attr('src') ||
+                   $('img[class*="logo"]').attr('src') ||
+                   $('img[alt*="logo"]').attr('src');
+    }
+  }
+
+  // Validate parsedLogo to ensure it is a valid image URL
+  const isValidImage = (urlStr) => {
+    if (!urlStr || typeof urlStr !== 'string') return false;
+    const cleanStr = urlStr.trim().toLowerCase();
+    if (cleanStr.startsWith('data:image/')) return true;
+    return /\.(png|jpe?g|svg|webp|ico)(\?.*)?$/i.test(cleanStr) || cleanStr.includes('/logo') || cleanStr.includes('/icon') || cleanStr.includes('/favicon');
+  };
+
+  try {
+    const clearbitRes = await axios.head(clearbitLogoUrl, { timeout: 3000 });
+    if (clearbitRes.status === 200) {
+      logoUrl = clearbitLogoUrl;
+      crawledSources.push('CLEARBIT_LOGO_API');
+    } else throw new Error('Clearbit 404');
+  } catch (e) {
+    if (parsedLogo && isValidImage(parsedLogo)) {
+      if (parsedLogo.startsWith('http')) logoUrl = parsedLogo;
+      else if (parsedLogo.startsWith('//')) logoUrl = 'https:' + parsedLogo;
+      else logoUrl = cleanUrl.replace(/\/$/, '') + (parsedLogo.startsWith('/') ? parsedLogo : '/' + parsedLogo);
+      crawledSources.push('SCHEMA_DOM_LOGO');
+    } else {
+      logoUrl = googleFaviconUrl;
+      crawledSources.push('GOOGLE_FAVICON_API');
+    }
+  }
+
+
+  let metaTitle = '';
+  let metaDescription = '';
+  let headings = [];
+  let socialPlatforms = schemaSameAs || [];
+  let emails = [];
+  let phones = [];
+  let hqAddress = '';
+
+  if ($) {
+    metaTitle = $('title').text().trim() || $('meta[property="og:title"]').attr('content') || '';
+    metaDescription = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content') || '';
 
     $('h1, h2, h3').each((i, el) => {
       const text = $(el).text().trim();
@@ -287,12 +377,29 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
         if (email && !emails.includes(email)) emails.push(email);
       }
       if (href.startsWith('tel:')) {
-        const phone = href.replace('tel:', '').trim();
+        const phone = href.replace('tel:', '').trim().replace(/^\++/, '+');
         if (phone && !phones.includes(phone)) phones.push(phone);
       }
     });
+
+    // Extract official toll-free / helpline phone numbers & HQ Location from body text
+    const pageText = $.text() || '';
+    const phoneMatches = pageText.match(/(?:1800[-\s]?\d{3}[-\s]?\d{4}|\+?91[-\s]?\d{10}|\+?1[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4})/gi) || [];
+    phoneMatches.forEach(p => {
+      const cleanP = p.trim().replace(/^\++/, '+');
+      if (cleanP && cleanP.length >= 10 && !phones.includes(cleanP)) {
+        phones.push(cleanP);
+      }
+    });
+
+    const hqMatch = pageText.match(/(?:headquarters|registered office|corporate office|address|based in|located in|h\.o\.)[\s:]+([A-Z][a-zA-Z\s,.-]{5,60})/i);
+    if (hqMatch && hqMatch[1]) {
+      hqAddress = hqMatch[1].trim().split('\n')[0].slice(0, 50);
+    }
   }
 
+
+  // STEP 4: Deep Content Crawl
   let deepContextText = '';
   if ($) {
     const deepData = await crawlBrandContext(cleanUrl, $);
@@ -302,24 +409,27 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     }
   }
 
-  let brandColors = extractAccurateBrandColors(cleanUrl, domainName, $, html);
+  // STEP 3: Hybrid Color Extraction (Logo Image Pixels + SVG Vector Fills + Design Tokens)
+  let brandColors = await extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl);
 
   return {
     cleanUrl,
     domainName,
-    brandName,
+    brandName: schemaName || brandName,
     metaTitle,
     metaDescription,
     faviconUrl,
-    logoUrl: faviconUrl,
+    logoUrl,
     headings: headings.slice(0, 8),
     brandColors,
     socialPlatforms,
     emails,
     phones,
+    hqAddress: hqAddress || '',
     deepContextText,
     crawledSources
   };
+
 }
 
 module.exports = {
@@ -327,5 +437,7 @@ module.exports = {
   extractCleanBrandName,
   extractAccurateBrandColors,
   crawlBrandContext,
-  generateDynamicBrandPalette
+  generateDynamicBrandPalette,
+  extractLogoPixelColors,
+  extractSchemaJsonLd
 };
