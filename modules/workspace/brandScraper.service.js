@@ -1,6 +1,13 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const Vibrant = require('node-vibrant');
+let Vibrant;
+try {
+  const vNode = require('node-vibrant/node');
+  Vibrant = vNode.Vibrant || vNode.default || vNode;
+} catch (e) {
+  try {
+    const vPkg = require('node-vibrant');
+    Vibrant = vPkg.Vibrant || vPkg.default || vPkg;
+  } catch (err) {}
+}
 const { searchTavily, extractTavilyUrl } = require('./tavily.service');
 
 async function extractLogoPixelColors(logoUrl) {
