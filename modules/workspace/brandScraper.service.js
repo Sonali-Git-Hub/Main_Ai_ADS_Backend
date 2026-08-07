@@ -8,7 +8,15 @@ try {
     Vibrant = vPkg.Vibrant || vPkg.default || vPkg;
   } catch (err) {}
 }
-const { searchTavily, extractTavilyUrl } = require('./tavily.service');
+let searchTavily = async () => null;
+let extractTavilyUrl = async () => null;
+try {
+  const tavModule = require('../../services/tavilyService');
+  if (tavModule) {
+    if (tavModule.searchTavily) searchTavily = tavModule.searchTavily;
+    if (tavModule.extractTavilyUrl) extractTavilyUrl = tavModule.extractTavilyUrl;
+  }
+} catch (e) {}
 
 async function extractLogoPixelColors(logoUrl) {
   if (!logoUrl || typeof logoUrl !== 'string' || logoUrl.endsWith('.svg') || logoUrl.startsWith('data:image/svg')) {
