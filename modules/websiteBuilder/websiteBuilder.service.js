@@ -69,11 +69,11 @@ STRICT TECHNICAL REQUIREMENTS:
 2. Incorporate custom Tailwind color styling using the brand colors: Primary (${primaryColor}), Secondary (${secondaryColor}).
 3. Build a complete layout:
    - Header with Logo ("${brandName}"), Nav links, and CTA button
-   - Hero Section with headline, subtitle, primary CTA button, and hero graphic/mockup element
+   - Hero Section with headline, subtitle, primary CTA button ("Launch Your Workspace Now"), and hero graphic/mockup element
    - Features Grid (3-4 cards with icons and descriptions)
    - Product Showcase / Demo Section
    - Social Proof & Client Testimonials Section
-   - Interactive Lead Capture Contact Form (with JS submission handler)
+   - MANDATORY: Interactive Lead Capture Popup Modal dialog (with JS handler openLeadModal() collecting Name, Email, Phone, and Note upon clicking any CTA button!)
    - Footer with copyright and quick links
 4. Output ONLY valid HTML5 code enclosed inside \`\`\`html ... \`\`\` code block. Do NOT include markdown text outside the code block.`;
 
