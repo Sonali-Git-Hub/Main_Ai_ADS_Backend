@@ -27,6 +27,7 @@ const { scrapeDomainUrl, parseBrandDocument, generateBrandDNA } = require('./mod
 const { verifyContentClaims } = require('./modules/factCheck/factCheck.service');
 const { generateSeoBrief, generateSocialPosts, generateBlogArticle, transformRepurposeContent } = require('./modules/seo/vertex.service');
 const { getCreditBalance, deductCredits, topUpCredits, setSubscriptionTier } = require('./modules/creative/credit.service');
+const { generateWebsiteCode } = require('./modules/websiteBuilder/websiteBuilder.service');
 
 // ─── New Route Modules ─────────────────────────────────────────────────────────
 const chatRoutes = require('./routes/chatRoutes');
@@ -792,6 +793,25 @@ app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
     console.log('Strategy Generation Error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Autonomous AI Website & App Builder Endpoints
+app.post('/api/builder/generate-site', async (req, res) => {
+  try {
+    const result = await generateWebsiteCode(req.body);
+    res.json(result);
+  } catch (err) {
+    console.log('Website Code Generation Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+let memoryLeads = [];
+app.post('/api/builder/submit-lead', async (req, res) => {
+  const leadData = { id: `lead_${Date.now()}`, ...req.body, submittedAt: new Date().toISOString() };
+  memoryLeads.unshift(leadData);
+  console.log(`📩 New Website Lead Captured for ${leadData.brandName || 'Brand'}:`, leadData.email);
+  res.json({ success: true, lead: leadData });
 });
 
 app.post('/api/seo/brief/generate', async (req, res) => {
