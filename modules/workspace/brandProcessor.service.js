@@ -538,7 +538,6 @@ function classifyBrandCategory(domainName, brandName, headings = [], metaDescrip
 
   // 2. Genuine Dynamic Business Type Inference (Based on Scraped DOM & Business Model Signals)
   let businessType = '';
-  
   const isB2B = /b2b|enterprise|saas|software|cloud|developer|api|corporate|wholesale|distributor|oem|bulk order|trade inquiry/i.test(combinedText);
   const isD2C = /add to cart|checkout|buy now|shop online|free shipping|d2c|storefront|cart icon/i.test(combinedText);
   const isB2C = /download app|on-demand|food delivery|ride|dining|consumer app|salon|clinic|gym|school/i.test(combinedText);

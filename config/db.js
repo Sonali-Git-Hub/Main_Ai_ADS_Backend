@@ -11,9 +11,8 @@ try {
 
 
 // Mongoose connection helper with DNS SRV fix
-
 const connectDB = async () => {
-  mongoose.set('bufferCommands', true); // Allow buffer commands during initial connection
+  mongoose.set('bufferCommands', true);
   const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai_ads_db';
   const localFallbackUri = 'mongodb://127.0.0.1:27017/ai_ads_db';
 

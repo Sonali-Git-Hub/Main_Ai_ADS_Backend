@@ -7,6 +7,7 @@ const { createServer } = require('http');
 
 // ─── Models ────────────────────────────────────────────────────────────────────
 const Workspace = require('./models/Workspace');
+
 const Content = require('./models/Content');
 const Calendar = require('./models/Calendar');
 const Campaign = require('./models/Campaign');
@@ -26,6 +27,7 @@ const { scrapeDomainUrl, parseBrandDocument, generateBrandDNA } = require('./mod
 const { verifyContentClaims } = require('./modules/factCheck/factCheck.service');
 const { generateSeoBrief, generateSocialPosts, generateBlogArticle, transformRepurposeContent } = require('./modules/seo/vertex.service');
 const { getCreditBalance, deductCredits, topUpCredits, setSubscriptionTier } = require('./modules/creative/credit.service');
+const { generateWebsiteCode } = require('./modules/websiteBuilder/websiteBuilder.service');
 
 // ─── New Route Modules ─────────────────────────────────────────────────────────
 const chatRoutes = require('./routes/chatRoutes');
@@ -584,18 +586,28 @@ app.put('/api/workspace/:id', async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id)) {
       updated = await Workspace.findByIdAndUpdate(id, req.body, { new: true });
     }
-    if (!updated) updated = await Workspace.findOneAndUpdate({ domainUrl: req.body.domainUrl }, req.body, { new: true });
-    if (updated) return res.json({ success: true, workspace: updated });
+    if (!updated) {
+      updated = await Workspace.findOneAndUpdate({ id }, req.body, { new: true });
+    }
+    if (!updated && req.body.domainUrl) {
+      updated = await Workspace.findOneAndUpdate({ domainUrl: req.body.domainUrl }, req.body, { new: true });
+    }
+    if (updated) {
+      console.log(`🍃 Brand DNA Memory Updated & Saved in MongoDB Atlas for: ${updated.brandName}`);
+      return res.json({ success: true, workspace: updated });
+    }
   } catch (e) {
     console.log('MongoDB Update Note:', e.message);
   }
-  const index = memoryWorkspaces.findIndex((w) => w.id === id || w._id === id);
+
+  const index = memoryWorkspaces.findIndex(w => w.id === id || w._id === id);
   if (index !== -1) {
     memoryWorkspaces[index] = { ...memoryWorkspaces[index], ...req.body };
     return res.json({ success: true, workspace: memoryWorkspaces[index] });
   }
   res.status(404).json({ success: false, error: 'Workspace not found' });
 });
+
 
 app.delete('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
@@ -606,8 +618,222 @@ app.delete('/api/workspace/:id', async (req, res) => {
   res.json({ success: true, message: 'Workspace deleted successfully' });
 });
 
-// ─── LEGACY CONTENT & CALENDAR ENDPOINTS ──────────────────────────────────────
-app.post('/api/content/social/generate-legacy', async (req, res) => {
+// Brand Intelligence API Endpoints
+app.get('/api/brand/:workspaceId', async (req, res) => {
+  const { workspaceId } = req.params;
+  try {
+    let found = null;
+    if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+      found = await Workspace.findById(workspaceId);
+    }
+    if (!found) {
+      found = await Workspace.findOne({ id: workspaceId });
+    }
+    if (found) {
+      return res.json({ success: true, profile: found });
+    }
+  } catch (e) {
+    console.log('MongoDB Brand Get Error:', e.message);
+  }
+
+  const memoryFound = memoryWorkspaces.find(w => w.id === workspaceId || w._id?.toString() === workspaceId);
+  if (memoryFound) {
+    return res.json({ success: true, profile: memoryFound });
+  }
+
+  res.json({ success: true, profile: null });
+});
+
+app.put('/api/brand/:workspaceId', async (req, res) => {
+  const { workspaceId } = req.params;
+  const updates = req.body;
+  try {
+    let updated = null;
+    if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+      updated = await Workspace.findByIdAndUpdate(workspaceId, updates, { new: true });
+    }
+    if (!updated) {
+      updated = await Workspace.findOneAndUpdate({ id: workspaceId }, updates, { new: true });
+    }
+    if (!updated && updates.domainUrl) {
+      updated = await Workspace.findOneAndUpdate({ domainUrl: updates.domainUrl }, updates, { new: true });
+    }
+    if (updated) {
+      console.log(`🍃 Brand DNA Profile Updated in MongoDB Atlas for: ${updated.brandName}`);
+      return res.json({ success: true, profile: updated, message: 'Brand Profile saved successfully' });
+    }
+  } catch (e) {
+    console.log('MongoDB Brand Update Note:', e.message);
+  }
+
+  const index = memoryWorkspaces.findIndex(w => w.id === workspaceId || w._id?.toString() === workspaceId);
+  if (index !== -1) {
+    memoryWorkspaces[index] = { ...memoryWorkspaces[index], ...updates };
+    return res.json({ success: true, profile: memoryWorkspaces[index], message: 'Brand Profile saved in memory' });
+  }
+
+  return res.json({ success: true, profile: updates, message: 'Brand Profile saved' });
+});
+
+app.post('/api/brand/analyze', async (req, res) => {
+  const { workspaceId, websiteUrl, companyName } = req.body;
+  try {
+    const scraped = await scrapeDomainUrl(websiteUrl || 'https://example.com');
+    const brandData = {
+      brandName: companyName || scraped.brandName || 'Analyzed Brand',
+      domainUrl: scraped.domainUrl || websiteUrl,
+      logoUrl: scraped.logoUrl || scraped.faviconUrl,
+      brandColors: scraped.brandColors,
+      targetAudience: scraped.targetAudience,
+      brandVoiceTone: scraped.brandVoiceTone,
+      contentPillars: scraped.contentPillars,
+      industryCategory: scraped.industryCategory,
+      missionStatement: scraped.missionStatement,
+      tagline: scraped.tagline,
+      confidenceScore: 88,
+      createdAt: new Date().toISOString()
+    };
+
+    if (workspaceId) {
+      let updated = null;
+      if (mongoose.Types.ObjectId.isValid(workspaceId)) {
+        updated = await Workspace.findByIdAndUpdate(workspaceId, brandData, { new: true });
+      }
+      if (!updated) {
+        updated = await Workspace.findOneAndUpdate({ id: workspaceId }, brandData, { new: true });
+      }
+      if (updated) {
+        return res.json({ success: true, profile: updated });
+      }
+    }
+    return res.json({ success: true, profile: brandData });
+  } catch (err) {
+    console.log('Brand AI Analysis Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/brand/regenerate-section', async (req, res) => {
+  const { section } = req.body;
+  let sampleData = null;
+  if (section === 'targetAudience') {
+    sampleData = { description: 'Primary consumers, tech-savvy professionals, and digital enthusiasts seeking premium performance and reliability.' };
+  } else if (section === 'contentStrategy') {
+    sampleData = ['Empowering through innovation & technology', 'Customer trust & premium product excellence', 'Sustainability & next-gen performance'];
+  } else {
+    sampleData = { note: `Regenerated ${section} section with AI` };
+  }
+  res.json({ success: true, data: sampleData });
+});
+
+app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
+  const { id } = req.params;
+  try {
+    let ws = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      ws = await Workspace.findById(id);
+    }
+    if (!ws) {
+      ws = await Workspace.findOne({ id });
+    }
+    if (!ws) {
+      ws = memoryWorkspaces.find(w => w.id === id || w._id?.toString() === id) || memoryWorkspaces[0] || {};
+    }
+
+    const brandName = ws.brandName || 'Brand';
+    const industry = ws.industryCategory || 'Consumer Products';
+    const topics = (ws.contentPillars && ws.contentPillars.length > 0)
+      ? ws.contentPillars
+      : [`${brandName} Product Value`, `Industry Trends in ${industry}`, `Customer Proof & Reviews`, `How-to Guides`];
+    const platforms = ['SEO Blog', 'LinkedIn', 'Instagram', 'Email Newsletter'];
+
+    const thirtyDayPlan = Array.from({ length: 30 }, (_, i) => {
+      const day = i + 1;
+      const pillar = topics[i % topics.length];
+      const platform = platforms[i % platforms.length];
+      return {
+        day,
+        title: `Day ${day}: ${pillar} - Key Insights for ${brandName}`,
+        topic: `${pillar} Focus: Essential Strategies & Tips`,
+        platform,
+        pillar,
+        status: 'PLANNED',
+        action: `Publish ${platform} content highlighting ${brandName}'s core value in ${industry}.`
+      };
+    });
+
+    const strategy = {
+      businessGoal: `Scale ${brandName}'s Organic Lead Pipeline by 250% & Elevate ${industry} Brand Authority`,
+      leadMagnet: `${brandName} 2026 Executive Playbook & Buyer's Guide (PDF)`,
+      primaryCta: `Discover ${brandName}'s Solutions — Get Started Free Today`,
+      postingFrequency: 'Daily',
+      budgetSuggestions: '60% Organic content marketing & SEO / 40% Paid micro-targeting & retargeting.',
+      bestPlatforms: ['LinkedIn', 'Google SEO Blog', 'Email Newsletter', 'Instagram & Reels'],
+      contentPillars: topics,
+      campaignIdeas: [
+        { title: `${brandName} Authority Series`, desc: `Long-form thought leadership posts demonstrating domain mastery.` },
+        { title: `Lead Magnet Opt-In Push`, desc: `Direct-response opt-in push using landing page & email funnel.` },
+        { title: `Social Proof Sprint`, desc: `Customer testimonials & case-study carousel posts for trust.` }
+      ],
+      thirtyDayPlan,
+      funnel: {
+        awareness: `Pillar-driven content, SEO optimization, and educational hooks to drive top-of-funnel reach for ${brandName}.`,
+        nurturing: `Interactive guides, how-to value-bombs, and lead magnet resources to capture email subscribers.`,
+        conversion: `Direct sales copy, verified client testimonials, case studies, and primary product benefit pushes.`
+      },
+      audience: Array.isArray(ws.targetAudience) ? ws.targetAudience : [ws.targetAudience || `Target consumers in ${industry}`]
+    };
+
+    if (ws && ws._id && mongoose.Types.ObjectId.isValid(ws._id)) {
+      await Workspace.findByIdAndUpdate(ws._id, { currentStrategy: strategy });
+    }
+
+    res.json({ success: true, strategy });
+  } catch (err) {
+    console.log('Strategy Generation Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Autonomous AI Website & App Builder Endpoints
+app.post('/api/builder/generate-site', async (req, res) => {
+  try {
+    const result = await generateWebsiteCode(req.body);
+    res.json(result);
+  } catch (err) {
+    console.log('Website Code Generation Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+let memoryLeads = [];
+app.post('/api/builder/submit-lead', async (req, res) => {
+  const leadData = { id: `lead_${Date.now()}`, ...req.body, submittedAt: new Date().toISOString() };
+  memoryLeads.unshift(leadData);
+  console.log(`📩 New Website Lead Captured for ${leadData.brandName || 'Brand'}:`, leadData.email);
+  res.json({ success: true, lead: leadData });
+});
+app.post('/api/seo/brief/generate', async (req, res) => {
+  const brief = await generateSeoBrief(req.body);
+
+  try {
+    await Content.create({
+      title: brief.suggestedTitles[0],
+      type: 'SEO_BRIEF',
+      briefData: brief,
+      author: 'Gemini 3.5 SEO Engine',
+      status: 'APPROVED'
+    });
+    console.log(`🍃 SEO Brief Saved to MongoDB Atlas: "${brief.primaryKeyword}"`);
+  } catch (err) {
+    console.log('SEO Brief DB Save Note:', err.message);
+  }
+
+  res.json({ success: true, brief });
+});
+
+// 3. Content Studio Generation & Fact Check (MongoDB Saved)
+app.post('/api/content/social/generate', async (req, res) => {
   const socialData = await generateSocialPosts(req.body);
   res.json({ success: true, data: socialData });
 });

@@ -13,7 +13,8 @@ async function generateBrandDNA(domainUrl, brandNameOverride = '', documentUploa
     scrapedData.metaDescription,
     scrapedData.deepContextText,
     scrapedData.aboutPageHeadings,
-    scrapedData.aboutPageText
+    scrapedData.aboutPageText,
+    scrapedData
   );
 
   let aiEnrichedData = null;

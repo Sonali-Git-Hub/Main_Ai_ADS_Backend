@@ -1,92 +1,86 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { Vibrant } = require('node-vibrant/node');
-const { searchTavily, extractTavilyUrl } = require('../../services/tavilyService');
+const Vibrant = require('node-vibrant');
+const { searchTavily, extractTavilyUrl } = require('./tavily.service');
 
-function deduplicateAndFilterColors(colors) {
-  const socialBlacklist = [
-    '#E60023', '#BD081C', '#BD081D', '#FF4500', '#B92B27',
-    '#1DA1F2', '#1A91DA', '#1877F2', '#3B5998', '#0A66C2',
-    '#0077B5', '#FF0000', '#282828', '#E1306C', '#C13584',
-    '#833AB4', '#000000', '#FFFFFF', '#F8FAFC', '#0F172A',
-    '#E2E8F0', '#CCCCCC', '#333333', '#666666', '#999999', '#111111'
-  ];
-
-  const unique = [];
-  for (const col of colors) {
-    if (!col || typeof col !== 'string') continue;
-    const upper = col.trim().toUpperCase();
-    if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(upper)) continue;
-    if (socialBlacklist.includes(upper)) continue;
-
-    let isTooSimilar = false;
-    for (const existing of unique) {
-      if (existing === upper) {
-        isTooSimilar = true;
-        break;
-      }
-    }
-
-    if (!isTooSimilar) {
-      unique.push(upper);
-      if (unique.length >= 4) break;
-    }
+async function extractLogoPixelColors(logoUrl) {
+  if (!logoUrl || typeof logoUrl !== 'string' || logoUrl.endsWith('.svg') || logoUrl.startsWith('data:image/svg')) {
+    return [];
   }
 
-  return unique;
+  try {
+    const palette = await Vibrant.from(logoUrl).getPalette();
+    const hexes = [];
+    const swatches = [
+      palette.Vibrant,
+      palette.Muted,
+      palette.DarkVibrant,
+      palette.LightVibrant,
+      palette.DarkMuted
+    ];
+
+    swatches.forEach(swatch => {
+      if (swatch) {
+        const hex = swatch.getHex().toUpperCase();
+        if (hex && !hexes.includes(hex) && hex !== '#FFFFFF' && hex !== '#000000') {
+          hexes.push(hex);
+        }
+      }
+    });
+
+    return hexes;
+  } catch (err) {
+    return [];
+  }
 }
 
-const COMPOUND_BRAND_NAMES = {
-  'boat': 'boAt',
-  'boatlifestyle': 'boAt',
-  'perfettivanmelle': 'Perfetti Van Melle',
-  'peterengland': 'Peter England',
-  'zedblack': 'Zed Black',
-  'asianpaints': 'Asian Paints',
-  'urbancompany': 'Urban Company',
-  'sugarcosmetics': 'Sugar Cosmetics',
-  'lotusbiscoff': 'Lotus Biscoff',
-  'royalenfield': 'Royal Enfield',
-  'redbull': 'Red Bull',
-  'harleydavidson': 'Harley Davidson',
-  'mercedesbenz': 'Mercedes Benz',
-  'astonmartin': 'Aston Martin',
-  'burgerking': 'Burger King',
-  'pizzahut': 'Pizza Hut',
-  'subway': 'Subway',
-  'starbucks': 'Starbucks',
-  'dunkindonuts': "Dunkin' Donuts",
-  'tacobell': 'Taco Bell',
-  'marutisuzuki': 'Maruti Suzuki',
-  'hyundaimotors': 'Hyundai Motors',
-  'generalmotors': 'General Motors',
-  'heromotocorp': 'Hero MotoCorp',
-  'iciciprudential': 'ICICI Prudential',
-  'hdfclife': 'HDFC Life',
-  'sbilife': 'SBI Life',
-  'kotakmahindra': 'Kotak Mahindra',
-  'bajajallianz': 'Bajaj Allianz',
-  'adityabirla': 'Aditya Birla'
-};
+function formatCleanSpacedBrandName(str) {
+  if (!str || typeof str !== 'string') return 'Brand Workspace';
+  let clean = str.replace(/^(https?:\/\/)?(www\d*|m|store|shop|en-in|in|us|uk)\./i, '');
+  clean = clean.split('.')[0].split('/')[0];
+  clean = clean.replace(/[-_]/g, ' ').trim();
 
-function formatCleanSpacedBrandName(name) {
-  if (!name || typeof name !== 'string') return '';
+  // Special Known Brands Dictionary
+  const BRAND_MAP = {
+    'airtel': 'Airtel',
+    'swiggy': 'Swiggy',
+    'crocs': 'Crocs',
+    'zomato': 'Zomato',
+    'boat': 'boAt',
+    'zebronics': 'Zebronics',
+    'flipkart': 'Flipkart',
+    'myntra': 'Myntra',
+    'nykaa': 'Nykaa',
+    'amazon': 'Amazon',
+    'oppo': 'OPPO',
+    'vivo': 'Vivo',
+    'realme': 'realme',
+    'oneplus': 'OnePlus',
+    'samsung': 'Samsung',
+    'apple': 'Apple',
+    'nike': 'Nike',
+    'puma': 'PUMA',
+    'adidas': 'Adidas',
+    'zedblack': 'Zed Black',
+    'zed black': 'Zed Black',
+    'mdph': 'MDPH',
+    'peterengland': 'Peter England',
+    'abfrl': 'ABFRL',
+    'tata': 'Tata',
+    'jio': 'Jio',
+    'amul': 'Amul',
+    'lenskart': 'Lenskart',
+    'razorpay': 'Razorpay',
+    'paytm': 'Paytm',
+    'cred': 'CRED',
+    'zerodha': 'Zerodha'
+  };
 
-  let clean = name.trim();
+  const lower = clean.toLowerCase();
+  if (BRAND_MAP[lower]) return BRAND_MAP[lower];
 
-  // Check known compound brand lookup dictionary
-  const strippedKey = clean.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (COMPOUND_BRAND_NAMES[strippedKey]) {
-    return COMPOUND_BRAND_NAMES[strippedKey];
-  }
-
-  // Expand CamelCase / PascalCase transitions (e.g. PerfettiVanMelle -> Perfetti Van Melle)
-  clean = clean.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
-
-  // Capitalize individual words
   return clean
-    .split(/[\s\-_]+/)
-    .filter(Boolean)
+    .split(/\s+/)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
@@ -98,7 +92,6 @@ function extractCleanBrandName(rawHost, overrideName = '') {
 
   const h = rawHost.replace(/^(www\d*|m|store|shop|en-in|in|us|uk)\./i, '');
   const basePart = h.split('.')[0];
-  
   return formatCleanSpacedBrandName(basePart);
 }
 
@@ -123,21 +116,22 @@ function generateDynamicBrandPalette(domainName) {
   }
 
   return [
-    hslToHex(hue1, 80, 48),
-    hslToHex(hue2, 85, 42),
-    hslToHex(hue3, 70, 52),
+    hslToHex(hue1, 75, 45),
+    hslToHex(hue2, 65, 55),
+    hslToHex(hue3, 80, 50),
     '#0F172A'
   ];
 }
 
-async function extractLogoPixelColors(logoUrl) {
-  if (!logoUrl) return [];
+function extractSvgFills(html) {
+  if (!html) return [];
+  const hexes = [];
   try {
-    const palette = await Vibrant.from(logoUrl).getPalette();
-    const hexes = [];
-    ['Vibrant', 'Muted', 'DarkVibrant', 'LightVibrant', 'DarkMuted'].forEach(key => {
-      if (palette[key] && palette[key].hex) {
-        hexes.push(palette[key].hex.toUpperCase());
+    const fillMatches = html.match(/fill=["'](#(?:[0-9a-fA-F]{3}){1,2})["']/g) || [];
+    fillMatches.forEach(m => {
+      const hex = m.match(/#(?:[0-9a-fA-F]{3}){1,2}/)[0].toUpperCase();
+      if (hex && !hexes.includes(hex) && hex !== '#FFFFFF' && hex !== '#000000') {
+        hexes.push(hex);
       }
     });
     return hexes;
@@ -198,58 +192,37 @@ async function extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl
   // Extract pixel colors from logo image via node-vibrant
   if (logoUrl) {
     const pixelColors = await extractLogoPixelColors(logoUrl);
-    pixelColors.forEach(c => logoBrandHexes.push(c));
-  }
-
-  if ($) {
-    // 1. Vector SVG Logo fill & stroke values
-    $('svg.logo, svg[class*="logo"], a[class*="logo"] svg, header svg[class*="logo"], nav svg[class*="logo"], .brand-logo svg, #logo svg').each((i, el) => {
-      const fill = $(el).attr('fill') || $(el).find('path').attr('fill');
-      const stroke = $(el).attr('stroke') || $(el).find('path').attr('stroke');
-      [fill, stroke].forEach(c => {
-        if (c && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(c.trim())) {
-          logoBrandHexes.push(c.trim().toUpperCase());
-        }
-      });
-    });
-
-    // 2. Meta Theme-Color & Tile Color
-    const themeMeta = $('meta[name="theme-color"]').attr('content') || 
-                      $('meta[name="msapplication-TileColor"]').attr('content') ||
-                      $('meta[name="apple-mobile-web-app-status-bar-style"]').attr('content');
-    if (themeMeta && /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/i.test(themeMeta.trim())) {
-      logoBrandHexes.push(themeMeta.trim().toUpperCase());
-    }
-
-    // 3. Brand Design Tokens / CSS Variables (--primary-color, --brand-color, --logo-color)
-    $('style').each((i, el) => {
-      const styleText = $(el).html() || '';
-      const varMatches = styleText.match(/--(?:primary|brand|logo|theme-main|accent)(?:-color)?:\s*(#[A-Fa-f0-9]{6})/gi) || [];
-      varMatches.forEach(m => {
-        const hex = m.match(/#[A-Fa-f0-9]{6}/i)?.[0];
-        if (hex) tokenBrandHexes.push(hex.toUpperCase());
-      });
+    pixelColors.forEach(h => {
+      if (!logoBrandHexes.includes(h)) logoBrandHexes.push(h);
     });
   }
 
-  const combinedCandidates = [...logoBrandHexes, ...tokenBrandHexes];
-  const cleanHexes = deduplicateAndFilterColors(combinedCandidates);
+  // Extract SVG Vector Fills
+  const svgHexes = extractSvgFills(html);
+  svgHexes.forEach(h => {
+    if (!tokenBrandHexes.includes(h)) tokenBrandHexes.push(h);
+  });
 
-  let finalHexes = [];
-  if (cleanHexes.length >= 2) {
-    finalHexes = cleanHexes.slice(0, 4);
-  } else {
-    finalHexes = generateDynamicBrandPalette(domainName);
+  // Extract CSS Var Tokens & Hex Values from DOM
+  if (html) {
+    const hexMatches = html.match(/#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g) || [];
+    const ignoreList = ['#FFFFFF', '#000000', '#FFF', '#000', '#F8FAFC', '#F1F5F9', '#E2E8F0', '#0F172A', '#1E293B'];
+
+    hexMatches.forEach(h => {
+      const upper = h.toUpperCase();
+      if (!ignoreList.includes(upper) && !tokenBrandHexes.includes(upper) && upper.length === 7) {
+        tokenBrandHexes.push(upper);
+      }
+    });
   }
 
-  const roles = ['Brand Primary', 'Brand Secondary', 'Accent', 'Dark Neutral'];
-  const names = ['Primary', 'Secondary', 'Accent', 'Dark'];
+  const merged = [...logoBrandHexes, ...tokenBrandHexes];
 
-  return finalHexes.map((hex, index) => ({
-    name: names[index] || `Brand Color ${index + 1}`,
-    hex: hex.toUpperCase(),
-    role: roles[index] || 'Brand Accent'
-  }));
+  if (merged.length >= 2) {
+    return merged.slice(0, 4);
+  }
+
+  return generateDynamicBrandPalette(domainName);
 }
 
 async function crawlBrandContext(cleanUrl, $) {

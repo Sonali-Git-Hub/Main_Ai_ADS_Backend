@@ -6,8 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "dev:node": "node server.js"
+    "dev": "node server.js"
   },
   "dependencies": {
     "@google-cloud/vertexai": "^1.12.0",
