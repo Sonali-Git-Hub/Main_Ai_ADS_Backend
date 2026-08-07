@@ -1057,13 +1057,14 @@ const server = httpServer.listen(PORT, () => {
   console.log(`  POST   /api/workspace/create         → Create workspace (legacy)\n`);
 });
 
+let currentPort = Number(PORT);
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    const fallbackPort = Number(PORT) + 1;
-    console.log(`⚠️ Port ${PORT} in use. Trying fallback port ${fallbackPort}...`);
-    httpServer.listen(fallbackPort, () => {
-      console.log(`🚀 AI Ads Backend running on http://localhost:${fallbackPort}`);
-    });
+    currentPort++;
+    console.log(`⚠️ Port ${currentPort - 1} in use. Trying fallback port ${currentPort}...`);
+    setTimeout(() => {
+      httpServer.listen(currentPort);
+    }, 500);
   } else {
     console.error('Server error:', err);
   }
