@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const WorkspaceSchema = new mongoose.Schema({
+  userEmail: { type: String, index: true, lowercase: true, trim: true, default: '' },
   brandName: { type: String, required: true },
   domainUrl: { type: String, required: true },
   logoUrl: { type: String, default: '' },
@@ -34,6 +35,7 @@ const WorkspaceSchema = new mongoose.Schema({
   ],
   restrictedClaims: [{ type: String }],
   priorityKeywords: [{ type: String }],
+  currentStrategy: { type: mongoose.Schema.Types.Mixed },
   createdAt: { type: Date, default: Date.now }
 });
 

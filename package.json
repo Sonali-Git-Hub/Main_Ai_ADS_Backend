@@ -1,24 +1,35 @@
 {
-  "name": "aisa-backend",
-  "version": "1.0.0",
-  "description": "AI Ads (AISA) Enterprise Platform Backend API",
+  "name": "ai-ads-backend",
+  "version": "2.0.0",
+  "description": "AI Ads Enterprise Platform Backend API v2.0 — Full Feature",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node server.js"
   },
   "dependencies": {
+    "@google-cloud/vertexai": "^1.12.0",
     "@google/genai": "^2.13.0",
     "axios": "^1.18.1",
+    "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.6.1",
+    "google-auth-library": "^10.9.1",
+    "groq-sdk": "^1.4.1",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.8.0",
     "multer": "^2.2.0",
     "node-vibrant": "^4.0.4",
+    "nodemon": "^3.1.14",
     "officeparser": "^7.5.0",
-    "pdf-parse": "^2.4.5"
+    "openai": "^7.1.0",
+    "pdf-parse": "^2.4.5",
+    "socket.io": "^4.8.3",
+    "uuid": "^14.0.1"
   }
 }

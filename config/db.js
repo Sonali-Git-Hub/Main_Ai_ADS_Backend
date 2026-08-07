@@ -10,11 +10,9 @@ try {
 } catch (e) {}
 
 
-// Disable Mongoose command buffering to prevent 10s timeouts when offline/disconnected
-mongoose.set('bufferCommands', false);
-
+// Mongoose connection helper with DNS SRV fix
 const connectDB = async () => {
-
+  mongoose.set('bufferCommands', true);
   const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai_ads_db';
   const localFallbackUri = 'mongodb://127.0.0.1:27017/ai_ads_db';
 
