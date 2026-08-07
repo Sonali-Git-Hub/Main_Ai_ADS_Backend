@@ -1,3 +1,5 @@
+const axios = require('axios');
+const cheerio = require('cheerio');
 let Vibrant;
 try {
   const vNode = require('node-vibrant/node');

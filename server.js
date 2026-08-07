@@ -195,6 +195,10 @@ app.use('/api/content', contentRoutes);
 const contentController = require('./controllers/contentController');
 app.post('/api/seo/brief/generate', contentController.generateSeoBrief);
 
+// Auto-Pilot Pipeline (SSE-based full orchestrator)
+const autopilotController = require('./controllers/autopilotController');
+app.post('/api/autopilot/generate', autopilotController.generateFullPipeline);
+
 // ─── LEGACY WORKSPACE / BRAND DNA ENDPOINTS (backward compatible & Multi-Tenant Isolated) ──────────────
 app.get('/api/workspace/list', async (req, res) => {
   try {
