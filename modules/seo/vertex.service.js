@@ -1,41 +1,33 @@
 /**
  * AI Ads Orchestration Service (Google Gemini SDK & Vertex AI Integration Engine)
- * Integrated with official @google/genai package.
+ * Integrated with central aiService (@google/genai Vertex AI mode, gemini-3.5-flash, asia-south1, ADC)
  */
-let GoogleGenAI;
-try {
-  const genaiPkg = require('@google/genai');
-  GoogleGenAI = genaiPkg.GoogleGenAI || genaiPkg.default;
-} catch (e) {
-  console.log('GoogleGenAI SDK loaded with fallback orchestration engine.');
-}
-
-const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
-let aiClient = null;
-
-if (GoogleGenAI && apiKey) {
-  try {
-    aiClient = new GoogleGenAI({ apiKey });
-  } catch (e) {
-    console.log('Gemini AI Client init note:', e.message);
-  }
-}
+const aiService = require('../../services/aiService');
 
 async function generateSeoBrief(params) {
   const { keyword, intent = 'Commercial', targetAudience = 'Enterprise Leaders', language = 'English' } = params;
 
-  if (aiClient) {
-    try {
-      const response = await aiClient.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `Generate a structured 8-step SEO brief for keyword "${keyword}" with search intent "${intent}" targeting "${targetAudience}" in ${language}. Return titles, meta description, and outline.`
-      });
-      if (response && response.text) {
-        console.log('Gemini Live AI Brief synthesized successfully.');
-      }
-    } catch (err) {
-      console.log('Gemini API call fallback to template brief:', err.message);
+  try {
+    const prompt = `Generate a structured SEO brief for keyword "${keyword}" with search intent "${intent}" targeting "${targetAudience}" in ${language}. Return JSON with suggestedTitles, metaTitle, metaDescription, urlSlug, targetWordCount, headingOutline, entityKeywords.`;
+    const aiBrief = await aiService.generateJSON(prompt, { model: 'gemini-3.5-flash' });
+    if (aiBrief && aiBrief.suggestedTitles) {
+      console.log('Gemini 3.5 Vertex AI Brief synthesized successfully.');
+      return {
+        primaryKeyword: keyword,
+        searchIntent: intent,
+        ...aiBrief,
+        jsonLdSchema: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Article",
+          "headline": aiBrief.suggestedTitles?.[0] || `Guide to ${keyword}`,
+          "keywords": [keyword, "AI Content Strategy"],
+          "inLanguage": language
+        }, null, 2),
+        generatedAt: new Date().toISOString()
+      };
     }
+  } catch (err) {
+    console.log('SEO Brief fallback template used:', err.message);
   }
 
   return {
@@ -69,8 +61,7 @@ async function generateSeoBrief(params) {
 }
 
 async function generateSocialPosts(params) {
-  const { topic, platform = 'LinkedIn', tone = 'Authoritative & Professional', brandName = 'AI Ads' } = params;
-
+  const { topic, platform = 'LinkedIn', brandName = 'AI Ads' } = params;
   return {
     platform,
     topic,
@@ -95,7 +86,6 @@ async function generateSocialPosts(params) {
 
 async function generateBlogArticle(params) {
   const { topic, brief, brandName = 'AI Ads' } = params;
-
   return {
     title: brief?.suggestedTitles?.[0] || `Mastering ${topic}: The Complete Enterprise Guide`,
     status: "DRAFT",
@@ -104,7 +94,7 @@ async function generateBlogArticle(params) {
     content: `# Mastering ${topic}: The Complete Enterprise Guide\n\nModern enterprise marketing demands unprecedented content velocity. However, scaling production without robust governance leads to brand voice drift, unverified factual claims, and slow turnaround times.\n\n## 1. Establishing Brand DNA Memory\nEvery successful campaign starts with central positioning memory. By codifying brand tone, audience personas, and approved claims, agencies eliminate repetitive revisions.\n\n> "Governance isn't a bottleneck—it's the foundation of high-velocity creative execution."\n\n## 2. Topic Clustering and Intent Mapping\nRather than chasing isolated keywords, high-performing teams organize content into pillar-cluster topic models. This builds domain authority while matching user search intent across TOFU, MOFU, and BOFU stages.\n\nAccording to recent agency benchmarks, structured briefing reduces editorial rewriting by over 60%.\n\n## 3. The Unified Content Pipeline\nFrom initial research to final scheduling, unifying brand strategy, SEO briefs, visual briefs, and multi-tier approval workflows creates an unstoppable operational pipeline.\n\n## Conclusion & Action Steps\nDeploying governed content operations transforms fragmented teams into elite growth engines. Align your strategy today to scale with confidence.`,
     faqSection: [
       { question: `What is the primary benefit of ${topic}?`, answer: `It unifies research, strategy, and execution into one governed workflow.` },
-      { question: "Does AI Ads guarantee search engine rankings?", answer: "No. Platform controls focus on factual quality, SEO structure, and brand compliance without making false ranking promises." }
+      { question: `Does ${brandName} guarantee search engine rankings?`, answer: "No. Platform controls focus on factual quality, SEO structure, and brand compliance without making false ranking promises." }
     ]
   };
 }
@@ -126,8 +116,7 @@ async function transformRepurposeContent(sourceAsset) {
       carouselOutline: [
         { slide: 1, title: title, subtitle: "Operational Playbook 2026" },
         { slide: 2, title: "Pillar 1: Brand Memory", subtitle: "Immutable Voice & Claims" },
-        { slide: 3, title: "Pillar 2: SEO Briefs", subtitle: "Intent & JSON-LD Schema" },
-        { slide: 4, title: "Pillar 3: Multi-Channel", subtitle: "Instant Asset Conversion" }
+        { slide: 3, title: "Pillar 4: Multi-Channel", subtitle: "Instant Asset Conversion" }
       ],
       faqList: [
         { q: `Why is ${title} critical for agencies?`, a: "It streamlines multi-brand workflows while maintaining 100% brand compliance." }

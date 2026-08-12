@@ -44,9 +44,18 @@ Always be specific, actionable, and data-driven in your recommendations.`;
   return system;
 };
 
-// ─── Gemini / Vertex AI Chat ──────────────────────────────────────────────────
+// ─── Gemini / Vertex AI Chat (@google/genai SDK in Vertex AI Mode) ──────────
 const chatWithGemini = async (messages, options = {}) => {
-  const modelId = options.modelId || 'gemini-2.0-flash';
+  const reqTag = options.reqId ? `[WB:${options.reqId}] ` : '[AI-Service] ';
+  const rawModel = (options.modelId || options.model || 'gemini-3.5-flash').toLowerCase();
+  
+  let modelId = 'gemini-3.5-flash';
+  if (rawModel.includes('pro')) {
+    modelId = 'gemini-3.5-pro';
+  } else {
+    modelId = 'gemini-3.5-flash';
+  }
+
   const systemInstruction = buildSystemPrompt(options);
 
   if (aiClient) {
@@ -63,16 +72,32 @@ const chatWithGemini = async (messages, options = {}) => {
       });
     }
 
-    const response = await aiClient.models.generateContent({
-      model: modelId,
-      contents,
-    });
+    let retries = 2;
+    while (retries >= 0) {
+      try {
+        console.log(`${reqTag}Calling @google/genai (Vertex AI asia-south1) model: ${modelId}...`);
+        const response = await aiClient.models.generateContent({
+          model: modelId,
+          contents,
+        });
 
-    const text = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { text, model: useVertexAI ? `vertex-ai (${modelId})` : `gemini-api (${modelId})` };
+        const text = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        console.log(`${reqTag}@google/genai Vertex AI (${modelId}) response received successfully.`);
+        return { text, model: `vertex-ai (${modelId})` };
+      } catch (modelErr) {
+        if (modelErr.message && modelErr.message.includes('429') && retries > 0) {
+          console.warn(`${reqTag}Vertex AI rate limit 429 hit. Waiting 5s before retry... (${retries} retries left)`);
+          await new Promise((r) => setTimeout(r, 5000));
+          retries--;
+        } else {
+          console.warn(`${reqTag}Primary @google/genai model ${modelId} failed: ${modelErr.message}`);
+          throw modelErr;
+        }
+      }
+    }
   }
 
-  throw new Error('Neither Google Cloud Vertex AI nor a valid GEMINI_API_KEY is configured. Please set GEMINI_API_KEY or OPENAI_API_KEY in your .env file.');
+  throw new Error('Google Cloud Vertex AI (@google/genai) is not initialized with Application Default Credentials (ADC).');
 };
 
 // ─── OpenAI Chat ──────────────────────────────────────────────────────────────
@@ -137,30 +162,43 @@ const chatWithGroq = async (messages, options = {}) => {
 
 // ─── Main Chat Dispatcher with Robust Fallback Chain ──────────────────────────
 const chat = async (messages, options = {}) => {
+  const reqTag = options.reqId ? `[WB:${options.reqId}] ` : '[AI-Service] ';
   const modelChoice = (options.model || 'gemini').toLowerCase();
 
-  // If Gemini/Vertex is not configured, skip directly to OpenAI
   const geminiAvailable = !!aiClient;
+  console.log(`${reqTag}AI Request initiated. Target provider: ${modelChoice}, Gemini Available: ${geminiAvailable}`);
 
   try {
     if (modelChoice === 'gpt-4o' || modelChoice === 'openai') {
+      console.log(`${reqTag}Selected AI provider: OpenAI (Model: gpt-4o)`);
       return await chatWithOpenAI(messages, options);
     } else if (modelChoice === 'groq' || modelChoice === 'llama') {
+      console.log(`${reqTag}Selected AI provider: Groq (Model: llama-3)`);
       return await chatWithGroq(messages, options);
     } else if (!geminiAvailable) {
-      // Gemini/Vertex not configured — go straight to OpenAI
-      console.log('[AI-Service] Gemini/Vertex not configured. Using OpenAI GPT-4o...');
+      console.log(`${reqTag}Gemini/Vertex not configured. Attempting OpenAI GPT-4o...`);
       return await chatWithOpenAI(messages, options);
     } else {
+      console.log(`${reqTag}Selected AI provider: Gemini / Vertex AI (Model: gemini-3.5-flash)`);
       return await chatWithGemini(messages, options);
     }
   } catch (primaryError) {
-    console.warn(`[AI-Service] ${modelChoice} primary engine failed (${primaryError.message}). Attempting OpenAI GPT-4o fallback...`);
+    const safeError = primaryError.message ? primaryError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
+    console.warn(`${reqTag}Gemini/Primary provider failed: ${safeError}. Attempting OpenAI fallback...`);
     try {
+      console.log(`${reqTag}OpenAI fallback started...`);
       return await chatWithOpenAI(messages, options);
     } catch (fallbackError) {
-      console.error(`[AI-Service] OpenAI fallback also failed: ${fallbackError.message}`);
-      throw primaryError;
+      const safeFbError = fallbackError.message ? fallbackError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
+      console.warn(`${reqTag}OpenAI fallback failed: ${safeFbError}. Attempting Groq fallback...`);
+      try {
+        console.log(`${reqTag}Groq fallback started...`);
+        return await chatWithGroq(messages, options);
+      } catch (groqError) {
+        const safeGroqError = groqError.message ? groqError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
+        console.error(`${reqTag}Groq fallback failed: ${safeGroqError}. All AI providers failed.`);
+        throw primaryError;
+      }
     }
   }
 };
@@ -170,13 +208,19 @@ const generate = async (prompt, options = {}) => {
 };
 
 const generateJSON = async (prompt, options = {}) => {
+  const reqTag = options.reqId ? `[WB:${options.reqId}] ` : '[AI-Service] ';
   const jsonInstruction = `\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no explanation. Just raw JSON.`;
+  
+  console.log(`${reqTag}AI generateJSON started...`);
   const result = await generate(prompt + jsonInstruction, options);
+  
   try {
     const cleaned = result.text.replace(/```json\n?|```\n?/g, '').trim();
-    return JSON.parse(cleaned);
+    const data = JSON.parse(cleaned);
+    console.log(`${reqTag}AI response received & JSON parsed successfully. Model: ${result.model}`);
+    return { data, model: result.model };
   } catch (e) {
-    console.error('[AI-Service] Failed to parse JSON response:', result.text.substring(0, 200));
+    console.error(`${reqTag}JSON parsing failed on AI response snippet: ${result.text.substring(0, 150)}`);
     return null;
   }
 };
