@@ -176,7 +176,9 @@ exports.deleteCampaign = async (req, res) => {
 };
 
 // ─── POST /api/campaigns/:id/generate-plan ────────────────────────────────────
-// AI-powered campaign plan: creates posts for every scheduled date + platform
+// AI-powered campaign plan: creates posts for every scheduled date + platform.
+// If strategyPlan (from the Strategy module's 30-day plan) is provided in the
+// request body, it is used directly to map topics/platforms/pillars per date.
 exports.generateCampaignPlan = async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
@@ -202,7 +204,91 @@ exports.generateCampaignPlan = async (req, res) => {
     const CAMPAIGN_STAGES = ['Awareness', 'Consideration', 'Conversion', 'Retention'];
     const CONTENT_TYPES = ['Educational', 'Promotional', 'Engagement', 'Behind the Scenes', 'User Story', 'Product Spotlight'];
 
-    // Build a comprehensive AI prompt
+    // ─── STRATEGY PLAN MODE ────────────────────────────────────────────────────
+    // If a 30-day strategy plan is provided (from the Strategy module),
+    // use it directly to map topics, platforms, and pillars per posting date.
+    const strategyPlan = req.body.strategyPlan; // Array of { day, title, topic, platform, pillar, action }
+
+    if (strategyPlan && Array.isArray(strategyPlan) && strategyPlan.length > 0) {
+      console.log(`[Campaign AI] Strategy-driven mode: mapping ${dates.length} dates from ${strategyPlan.length}-day strategy plan...`);
+
+      // Delete existing posts for this campaign
+      await CampaignPost.deleteMany({ campaignId: campaign._id });
+
+      const postsToCreate = [];
+
+      for (let i = 0; i < dates.length; i++) {
+        const postDate = dates[i];
+        const dayName = DAYS[postDate.getDay()];
+
+        // Map each date to the corresponding strategy day (cycle if plan is shorter than dates)
+        const strategyIndex = i % strategyPlan.length;
+        const stratDay = strategyPlan[strategyIndex];
+
+        // Determine platform: prefer strategy plan platform, fallback to campaign platforms
+        let platform = (stratDay.platform || platforms[i % platforms.length] || 'Instagram').toLowerCase();
+        // Normalize common platform names
+        if (platform.includes('seo') || platform.includes('blog')) platform = 'blog';
+        else if (platform.includes('linkedin')) platform = 'linkedin';
+        else if (platform.includes('instagram') || platform.includes('reels')) platform = 'instagram';
+        else if (platform.includes('email') || platform.includes('newsletter')) platform = 'email';
+        else if (platform.includes('youtube') || platform.includes('video')) platform = 'youtube';
+        else if (platform.includes('twitter') || platform.includes('x.com')) platform = 'twitter';
+
+        // Determine campaign stage based on position in plan
+        const stageIndex = Math.floor((i / dates.length) * CAMPAIGN_STAGES.length);
+        const campaignStage = CAMPAIGN_STAGES[Math.min(stageIndex, CAMPAIGN_STAGES.length - 1)];
+
+        // Build content type from pillar
+        const pillar = stratDay.pillar || stratDay.topic || '';
+        const contentType = pillar.toLowerCase().includes('educat') ? 'Educational'
+          : pillar.toLowerCase().includes('promo') ? 'Promotional'
+          : pillar.toLowerCase().includes('proof') || pillar.toLowerCase().includes('testimon') ? 'User Story'
+          : pillar.toLowerCase().includes('behind') ? 'Behind the Scenes'
+          : CONTENT_TYPES[i % CONTENT_TYPES.length];
+
+        const postObjective = stratDay.action || stratDay.topic || stratDay.title || campaign.campaignGoal;
+        const topic = stratDay.topic || stratDay.title || campaign.campaignName;
+
+        postsToCreate.push({
+          campaignId: campaign._id,
+          workspaceId: campaign.workspaceId,
+          date: postDate,
+          day: dayName,
+          platform,
+          contentType,
+          campaignStage,
+          postObjective,
+          prompt: `Create a ${platform} post about: ${topic}. Pillar: ${pillar}. Stage: ${campaignStage}.`,
+          postType: platform === 'instagram' ? 'Image' : platform === 'youtube' ? 'Video' : platform === 'linkedin' ? 'Article' : 'Image',
+          carouselImages: 0,
+          postFor: pillar || 'Brand Awareness',
+          imagePrompt: `Professional ${platform} visual for: ${topic}`,
+          captionPrompt: `Write a compelling ${platform} caption for: "${topic}". Focus on ${pillar}. Campaign stage: ${campaignStage}. Include relevant hashtags.`,
+          status: 'Draft',
+          bestPostingTime: platform === 'linkedin' ? '9:00 AM' : platform === 'instagram' ? '6:00 PM' : '10:00 AM',
+        });
+      }
+
+      const createdPosts = await CampaignPost.insertMany(postsToCreate);
+
+      await Campaign.findByIdAndUpdate(campaign._id, {
+        totalPosts: createdPosts.length,
+        status: 'Active',
+        aiGeneratedStrategy: strategyPlan.slice(0, 3),
+      });
+
+      console.log(`✅ [Strategy-Driven] Generated ${createdPosts.length} posts for "${campaign.campaignName}" using strategy plan.`);
+      return res.json({
+        success: true,
+        message: `Generated ${createdPosts.length} campaign posts from strategy plan`,
+        posts: createdPosts,
+        totalDates: dates.length,
+        source: 'strategy_plan',
+      });
+    }
+
+    // ─── GENERIC AI MODE (fallback when no strategy plan is provided) ──────────
     const prompt = `You are a professional social media campaign strategist.
     
 Campaign Details:
@@ -353,6 +439,21 @@ Return JSON: { "caption": "...", "hashtags": ["#tag1", "#tag2"], "cta": "..." }`
 
     const updatedPost = await CampaignPost.findByIdAndUpdate(req.params.postId, updateData, { returnDocument: 'after' });
     res.json({ success: true, post: updatedPost });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ─── PUT /api/campaigns/posts/:postId ───────────────────────────────────────
+exports.updatePost = async (req, res) => {
+  try {
+    const post = await CampaignPost.findByIdAndUpdate(
+      req.params.postId,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    if (!post) return res.status(404).json({ success: false, error: 'Post not found' });
+    res.json({ success: true, post });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
