@@ -13,6 +13,7 @@ router.delete('/:id', campaignController.deleteCampaign);
 router.get('/:id/posts', campaignController.getCampaignPosts);
 router.post('/:id/generate-plan', campaignController.generateCampaignPlan);
 router.post('/posts/:postId/generate-content', campaignController.generatePostContent);
+router.put('/posts/:postId', campaignController.updatePost);
 router.patch('/posts/:postId/status', campaignController.updatePostStatus);
 
 // Utility

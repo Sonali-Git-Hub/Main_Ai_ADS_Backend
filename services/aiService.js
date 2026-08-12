@@ -225,4 +225,24 @@ const generateJSON = async (prompt, options = {}) => {
   }
 };
 
-module.exports = { chat, generate, generateJSON, chatWithGemini, chatWithOpenAI, chatWithGroq };
+const generateCaptions = async (prompt, options = {}) => {
+  // Short caption request (<= 60 chars)
+  const shortInstruction = `\n\nPLEASE RETURN ONLY A SHORT CAPTION (max 60 characters) for the content below.\nSEO focus: ${options.seo || 'generic SEO'}\nStrategy: ${options.strategy || 'general marketing'}`;
+  const shortResult = await generate(prompt + shortInstruction, options);
+  const shortCaption = shortResult.text.trim();
+
+  // Long caption request (up to 150 chars)
+  const longInstruction = `\n\nPLEASE RETURN ONLY A LONG CAPTION (max 150 characters) for the content below.\nSEO focus: ${options.seo || 'generic SEO'}\nStrategy: ${options.strategy || 'general marketing'}`;
+  const longResult = await generate(prompt + longInstruction, options);
+  const longCaption = longResult.text.trim();
+
+  return {
+    shortCaption,
+    longCaption,
+    // include raw texts for debugging if needed
+    rawShort: shortResult.text,
+    rawLong: longResult.text,
+  };
+};
+
+module.exports = { chat, generate, generateJSON, generateCaptions, chatWithGemini, chatWithOpenAI, chatWithGroq };

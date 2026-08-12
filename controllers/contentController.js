@@ -39,16 +39,27 @@ exports.generateSocialPost = async (req, res) => {
 Tone: ${tone}
 ${brandContext ? `Brand Context:\n${brandContext}` : ''}
 
-Return JSON:
+Return JSON with exact keys:
 {
-  "caption": "the full post caption",
-  "shortCaption": "under 150 chars version",
-  "hashtags": ${includeHashtags ? '["#tag1", "#tag2", "#tag3"]' : '[]'},
-  "cta": ${includeCTA ? '"clear call to action"' : '""'},
-  "hook": "opening hook line",
+  "hook": "punchy headline or hook line (e.g. Upgrade Your Style with Discounts on Bottoms!)",
+  "shortCaption": "short concise caption (under 150 chars, e.g. Grab your trendy bottoms now at unbeatable prices! #ZaraStyle)",
+  "caption": "full detailed long caption (e.g. Discover our latest collection of bottoms with amazing discounts...)",
+  "longCaption": "full detailed long caption",
+  "cta": "engaging call to action (e.g. Hurry, grab yours now before they are gone!)",
+  "hashtags": ${includeHashtags ? '["#Discounts", "#BottomsSale", "#FashionStyle"]' : '[]'},
+  "creativeVariations": [
+    {
+      "type": "STORYTELLING ANGLE",
+      "text": "Storytelling perspective (e.g. Imagine stepping out in style with the latest bottoms...)"
+    },
+    {
+      "type": "PROBLEM-SOLUTION",
+      "text": "Problem-solution perspective (e.g. Struggling to find fashion-forward bottoms that fit your budget?...)"
+    }
+  ],
   "imagePrompt": "detailed visual description for AI image generation",
   "bestTimeToPost": "e.g. 9-11 AM",
-  "expectedEngagement": "high|medium|low"
+  "expectedEngagement": "high"
 }`;
 
     const result = await generateJSON(prompt, { model, temperature: 0.85 });
