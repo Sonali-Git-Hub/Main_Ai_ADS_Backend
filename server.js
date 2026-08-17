@@ -585,13 +585,13 @@ app.put('/api/workspace/:id', async (req, res) => {
   try {
     let updated = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
-      updated = await Workspace.findByIdAndUpdate(id, req.body, { new: true });
+      updated = await Workspace.findByIdAndUpdate(id, req.body, { returnDocument: 'after' });
     }
     if (!updated) {
-      updated = await Workspace.findOneAndUpdate({ id }, req.body, { new: true });
+      updated = await Workspace.findOneAndUpdate({ id }, req.body, { returnDocument: 'after' });
     }
     if (!updated && req.body.domainUrl) {
-      updated = await Workspace.findOneAndUpdate({ domainUrl: req.body.domainUrl }, req.body, { new: true });
+      updated = await Workspace.findOneAndUpdate({ domainUrl: req.body.domainUrl }, req.body, { returnDocument: 'after' });
     }
     if (updated) {
       console.log(`🍃 Brand DNA Memory Updated & Saved in MongoDB Atlas for: ${updated.brandName}`);
@@ -651,13 +651,13 @@ app.put('/api/brand/:workspaceId', async (req, res) => {
   try {
     let updated = null;
     if (mongoose.Types.ObjectId.isValid(workspaceId)) {
-      updated = await Workspace.findByIdAndUpdate(workspaceId, updates, { new: true });
+      updated = await Workspace.findByIdAndUpdate(workspaceId, updates, { returnDocument: 'after' });
     }
     if (!updated) {
-      updated = await Workspace.findOneAndUpdate({ id: workspaceId }, updates, { new: true });
+      updated = await Workspace.findOneAndUpdate({ id: workspaceId }, updates, { returnDocument: 'after' });
     }
     if (!updated && updates.domainUrl) {
-      updated = await Workspace.findOneAndUpdate({ domainUrl: updates.domainUrl }, updates, { new: true });
+      updated = await Workspace.findOneAndUpdate({ domainUrl: updates.domainUrl }, updates, { returnDocument: 'after' });
     }
     if (updated) {
       console.log(`🍃 Brand DNA Profile Updated in MongoDB Atlas for: ${updated.brandName}`);
@@ -698,10 +698,10 @@ app.post('/api/brand/analyze', async (req, res) => {
     if (workspaceId) {
       let updated = null;
       if (mongoose.Types.ObjectId.isValid(workspaceId)) {
-        updated = await Workspace.findByIdAndUpdate(workspaceId, brandData, { new: true });
+        updated = await Workspace.findByIdAndUpdate(workspaceId, brandData, { returnDocument: 'after' });
       }
       if (!updated) {
-        updated = await Workspace.findOneAndUpdate({ id: workspaceId }, brandData, { new: true });
+        updated = await Workspace.findOneAndUpdate({ id: workspaceId }, brandData, { returnDocument: 'after' });
       }
       if (updated) {
         return res.json({ success: true, profile: updated });

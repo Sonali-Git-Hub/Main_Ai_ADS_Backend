@@ -46,15 +46,58 @@ class ProjectStorageService {
         const fullPath = path.join(currentDir, entry.name);
         const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
           readDirectoryRecursively(fullPath, relPath);
         } else if (entry.isFile()) {
-          files[relPath] = fs.readFileSync(fullPath, 'utf8');
+          if (entry.name === '.DS_Store' || entry.name.endsWith('.log')) continue;
+          try {
+            files[relPath] = fs.readFileSync(fullPath, 'utf8');
+          } catch (e) {
+            // Ignore binary read errors if any
+          }
         }
       }
     };
 
     readDirectoryRecursively(versionDir);
     return { success: true, files };
+  }
+
+  exportProjectZip(projectId, version = 'v1', res, downloadName = 'website-source-code') {
+    const versionDir = this.getProjectVersionPath(projectId, version);
+    if (!fs.existsSync(versionDir)) {
+      return res.status(404).json({ success: false, error: 'Project version files not found on disk' });
+    }
+
+    const archiver = require('archiver');
+    const safeName = downloadName.toLowerCase().replace(/[^a-z0-9-_]/g, '-') || 'website-app';
+
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}-source-code.zip"`);
+    }
+
+    const archive = typeof archiver === 'function'
+      ? archiver('zip', { zlib: { level: 9 } })
+      : (archiver.ZipArchive ? new archiver.ZipArchive({ zlib: { level: 9 } }) : archiver.create('zip', { zlib: { level: 9 } }));
+
+    archive.on('error', (err) => {
+      console.error('[ExportZIP Error]', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    archive.pipe(res);
+
+    // Append files from versionDir, ignoring node_modules, dist, .git
+    archive.glob('**/*', {
+      cwd: versionDir,
+      ignore: ['node_modules/**', 'dist/**', '.git/**', '*.log', '.DS_Store'],
+      dot: true
+    });
+
+    archive.finalize();
   }
 }
 

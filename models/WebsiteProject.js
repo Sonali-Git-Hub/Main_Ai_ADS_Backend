@@ -28,13 +28,19 @@ const WebsiteProjectSchema = new mongoose.Schema({
     deployedAt: { type: Date }
   },
 
+  // Project Artifacts Payload
+  blueprint: { type: mongoose.Schema.Types.Mixed },
+  website: { type: mongoose.Schema.Types.Mixed },
+  requirement: { type: mongoose.Schema.Types.Mixed },
+  runtime: { type: mongoose.Schema.Types.Mixed },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
 
 WebsiteProjectSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
-  next();
+  if (typeof next === 'function') next();
 });
 
 module.exports = mongoose.model('WebsiteProject', WebsiteProjectSchema);

@@ -50,11 +50,6 @@ const chatWithGemini = async (messages, options = {}) => {
   const rawModel = (options.modelId || options.model || 'gemini-3.5-flash').toLowerCase();
   
   let modelId = 'gemini-3.5-flash';
-  if (rawModel.includes('pro')) {
-    modelId = 'gemini-3.5-pro';
-  } else {
-    modelId = 'gemini-3.5-flash';
-  }
 
   const systemInstruction = buildSystemPrompt(options);
 
@@ -220,6 +215,34 @@ const generateJSON = async (prompt, options = {}) => {
     console.log(`${reqTag}AI response received & JSON parsed successfully. Model: ${result.model}`);
     return { data, model: result.model };
   } catch (e) {
+    console.warn(`${reqTag}Standard JSON parse failed, attempting smart repair...`);
+    try {
+      let raw = result.text.replace(/```json\n?|```\n?/g, '').trim();
+      const firstBrace = raw.indexOf('{');
+      const lastBrace = raw.lastIndexOf('}');
+      if (firstBrace !== -1) {
+        if (lastBrace > firstBrace) {
+          raw = raw.substring(firstBrace, lastBrace + 1);
+        } else {
+          raw = raw.substring(firstBrace) + '"}';
+        }
+        const data = JSON.parse(raw);
+        console.log(`${reqTag}Repaired and parsed JSON successfully.`);
+        return { data, model: result.model };
+      }
+    } catch (repairErr) {
+      // Fallback: Extract partial fields with regex
+      const partialData = {};
+      const expMatch = result.text.match(/"explanation":\s*"([^"]+)"/);
+      if (expMatch) partialData.explanation = expMatch[1];
+      const titleMatch = result.text.match(/"updatedTitle":\s*"([^"]+)"/);
+      if (titleMatch) partialData.updatedTitle = titleMatch[1];
+
+      if (Object.keys(partialData).length > 0) {
+        console.log(`${reqTag}Extracted partial JSON fields successfully.`);
+        return { data: partialData, model: result.model };
+      }
+    }
     console.error(`${reqTag}JSON parsing failed on AI response snippet: ${result.text.substring(0, 150)}`);
     return null;
   }
