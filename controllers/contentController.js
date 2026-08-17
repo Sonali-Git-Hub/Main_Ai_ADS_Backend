@@ -153,6 +153,14 @@ exports.generateEmailCopy = async (req, res) => {
       subject,
       purpose = 'newsletter',
       recipientType = 'subscribers',
+      context = '',
+      tone = 'professional',
+      keyPoints = '',
+      cta = '',
+      senderName = '',
+      senderDesignation = '',
+      senderCompany = '',
+      lengthFormat = 'detailed',
       model = 'gemini',
     } = req.body;
 
@@ -160,25 +168,41 @@ exports.generateEmailCopy = async (req, res) => {
 
     const brandContext = await getBrandContext(workspaceId);
 
-    const prompt = `Write a compelling ${purpose} email:
-Subject: "${subject}"
-Recipients: ${recipientType}
+    const senderBlock = senderName
+      ? `Sender: ${senderName}${senderDesignation ? ', ' + senderDesignation : ''}${senderCompany ? ' at ' + senderCompany : ''}`
+      : '';
+
+    const prompt = `Write a compelling ${purpose} email with the following specifications:
+
+Subject / Topic: "${subject}"
+Purpose: ${purpose}
+Recipients / Audience: ${recipientType}
+Tone: ${tone}
+Context / Background: ${context || 'General brand communication'}
+Key Points to Include: ${keyPoints || 'Brand highlights and value proposition'}
+Desired CTA: ${cta || 'Engage with the brand'}
+${senderBlock}
+Length & Format: ${lengthFormat}
 ${brandContext ? `Brand Context:\n${brandContext}` : ''}
 
 Return JSON:
 {
-  "subject": "email subject line",
+  "subject": "compelling email subject line",
   "preheader": "preview text under 100 chars",
-  "body": "full email HTML body",
-  "cta": "primary call to action text",
+  "body": "full email body content (plain text with line breaks, NOT HTML)",
+  "headline": "main headline inside the email",
+  "cta": "primary call to action button text",
   "ctaUrl": "#your-link",
-  "openRateTip": "tip to improve open rate"
+  "openRateTip": "tip to improve open rate",
+  "closingLine": "warm sign-off line before sender signature",
+  "ps": "optional P.S. line for urgency or bonus offer"
 }`;
 
     const result = await generateJSON(prompt, { model, temperature: 0.8 });
     if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
 
-    res.json({ success: true, email: result });
+    const emailData = result?.data || result;
+    res.json({ success: true, email: emailData });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
