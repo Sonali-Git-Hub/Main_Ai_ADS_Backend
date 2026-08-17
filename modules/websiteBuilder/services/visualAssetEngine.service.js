@@ -33,13 +33,38 @@ function inferDomainAndVisualIntent(params = {}) {
   let baseKeywords = ['modern', 'commercial', 'high quality'];
   let domainNegatives = ['blurry', 'low resolution', 'distorted', 'watermark'];
 
-  // Domain Taxonomy Inference
-  if (/flower|florist|bouquet|botanical|rose|tulip|peony|plant|greenhouse/i.test(combined)) {
+  // Domain Taxonomy Inference - Specific / Niche Domains First!
+  if (/god|deity|portrait|spiritual|devotional|hindu|krishna|shiva|ganesha|ram|hanuman|temple|sacred|divine|puja|idol|religious|mytholog/i.test(combined)) {
+    primaryDomain = 'DEVOTIONAL_SPIRITUAL_ART';
+    aestheticMood = 'Warm golden devotional lighting, rich traditional oil on canvas textures, ornate brass embellishments, sacred gallery aesthetic';
+    baseKeywords = ['sacred deity portrait', 'traditional devotional canvas art', 'ornate handcrafted spiritual painting', 'sacred idol artwork'];
+    domainNegatives.push('laptops', 'office desks', 'cheap plastic', 'supercars', 'motorcycles', 'dental clinic', 'fast food');
+  } else if (/jewelry|jewellery|diamond|gold necklace|ring|earring|gemstone|bracelet|bangle|pendant/i.test(combined)) {
+    primaryDomain = 'JEWELRY_LUXURY';
+    aestheticMood = 'Ultra-luxury dark macro jewelry studio, sparkling diamond facets, polished 22k gold reflections, 8k luxury editorial';
+    baseKeywords = ['luxury diamond ring', 'handcrafted gold necklace', 'gemstone jewelry display', 'artisan luxury bracelet'];
+    domainNegatives.push('food', 'pizza', 'cars', 'motorcycles', 'office skyscraper', 'dental');
+  } else if (/perfume|fragrance|scent|cologne|attar|eau de parfum/i.test(combined)) {
+    primaryDomain = 'PERFUME_FRAGRANCE';
+    aestheticMood = 'Minimalist luxury glass perfume studio, warm golden mist reflections, elegant flacon design';
+    baseKeywords = ['luxury perfume bottle', 'artisan fragrance flacon', 'amber glass perfume mist'];
+    domainNegatives.push('food', 'cars', 'motorcycles', 'dental clinic', 'smartphones');
+  } else if (/bakery|bread|sourdough|pastry|cake|croissant|patisserie|bakeshop/i.test(combined)) {
+    primaryDomain = 'BAKERY_CAFE';
+    aestheticMood = 'Warm morning artisanal bakery, dusting of flour, golden crust sourdough, flaky croissants, warm ambient light';
+    baseKeywords = ['artisan sourdough loaf', 'golden flaky croissant', 'handcrafted chocolate cake', 'fresh bakery display'];
+    domainNegatives.push('smartphones', 'laptops', 'cars', 'motorcycles', 'dental clinic', 'office desk');
+  } else if (/tea|matcha|herbal tea|chai|loose leaf/i.test(combined)) {
+    primaryDomain = 'ORGANIC_TEA';
+    aestheticMood = 'Zen organic tea aesthetic, fresh green tea leaves, bamboo matcha whisk, steaming porcelain teacup';
+    baseKeywords = ['organic herbal tea blend', 'traditional matcha bowl', 'fresh green tea leaves', 'steaming artisan tea'];
+    domainNegatives.push('cars', 'smartphones', 'fast food', 'supercars', 'dental chair');
+  } else if (/flower|florist|bouquet|botanical|rose|tulip|peony|plant|greenhouse/i.test(combined)) {
     primaryDomain = 'FLORISTRY_BOTANICAL';
     aestheticMood = 'Soft diffused morning natural light, delicate pastel tones, fresh botanical textures, 8k editorial';
     baseKeywords = ['fresh flowers', 'artisan bouquet', 'florist studio', 'botanical arrangement', 'blooming petals'];
     domainNegatives.push('ice cream', 'food dish', 'dessert', 'car', 'motorcycle', 'office skyscraper', 'dental', 'laptop code', 'clothing fashion');
-  } else if (/phone|mobile|smartphone|gadget|electronics|device|tablet|tech store/i.test(combined)) {
+  } else if (/phone|mobile|smartphone|gadget|electronics|device|tablet|laptop|tech store/i.test(combined)) {
     primaryDomain = 'MOBILE_ELECTRONICS';
     aestheticMood = 'Clean sleek minimalist tech studio, precision rim lighting, glossy screen reflections, premium titanium/glass materials';
     baseKeywords = ['flagship smartphone', 'sleek modern mobile device', 'wireless accessories', 'curated electronics display'];
@@ -49,7 +74,27 @@ function inferDomainAndVisualIntent(params = {}) {
     aestheticMood = 'Warm ambient Japanese wood counter lighting, fresh glistening fish textures, artisan ceramic plating, clean culinary focus';
     baseKeywords = ['artisan sushi nigiri', 'fresh salmon tuna sashimi', 'bamboo sushi counter', 'japanese culinary plate'];
     domainNegatives.push('smartphones', 'laptops', 'cars', 'motorcycles', 'flowers boutique', 'dental clinic', 'office desk');
-  } else if (/car showroom|luxury automotive|supercar|vehicle dealership|sports car/i.test(combined)) {
+  } else if (/restaurant|dining|bistro|gourmet|cuisine|burger|pizza|chef|food/i.test(combined)) {
+    primaryDomain = 'RESTAURANT_DINING';
+    aestheticMood = 'Atmospheric gourmet bistro lighting, mouth-watering artisan culinary presentation, vibrant dining ambience';
+    baseKeywords = ['gourmet culinary dish', 'artisan fine dining plate', 'wood fired artisanal pizza', 'bistro interior table'];
+    domainNegatives.push('smartphones', 'laptops', 'cars', 'motorcycles', 'dental clinic', 'office desk');
+  } else if (/dental|dentist|teeth|smile aesthetic|clinic|doctor|hospital|healthcare/i.test(combined)) {
+    primaryDomain = 'DENTAL_HEALTHCARE';
+    aestheticMood = 'Ultra-clean bright modern dental suite, pristine white architectural lighting, gentle professional healthcare aura';
+    baseKeywords = ['modern dental studio', 'confident healthy smile', 'precision medical clinic', 'care consultation'];
+    domainNegatives.push('food', 'pizza', 'cars', 'motorcycles', 'nightclub', 'flowers bouquet');
+  } else if (/real estate|property|villa|realtor|penthouse|apartment|architecture/i.test(combined)) {
+    primaryDomain = 'REAL_ESTATE_ARCHITECTURE';
+    aestheticMood = 'Breathtaking modern architectural sunset, floor-to-ceiling glass walls, infinity pool, luxury estate styling';
+    baseKeywords = ['modern luxury villa', 'architectural penthouse interior', 'panoramic estate view', 'luxury home exterior'];
+    domainNegatives.push('motorcycles', 'fast food', 'dental chair', 'smartphones repair');
+  } else if (/fashion|apparel|clothing|dress|boutique|streetwear|couture|outfit/i.test(combined)) {
+    primaryDomain = 'FASHION_APPAREL';
+    aestheticMood = 'High-end Vogue studio lighting, elegant silk and cotton draping, contemporary designer editorial styling';
+    baseKeywords = ['luxury designer outfit', 'contemporary fashion editorial', 'curated boutique clothing rack', 'couture garment'];
+    domainNegatives.push('cars', 'smartphones repair', 'dental clinic', 'food dish');
+  } else if (/car showroom|luxury automotive|supercar|vehicle dealership|sports car|automobile/i.test(combined)) {
     primaryDomain = 'LUXURY_AUTOMOTIVE';
     aestheticMood = 'Polished dark architectural showroom, dramatic overhead linear studio light, reflective metallic paint curves, 8k automotive';
     baseKeywords = ['luxury sports car', 'aerodynamic vehicle chassis', 'automotive showroom interior', 'alloy wheels'];
@@ -59,21 +104,11 @@ function inferDomainAndVisualIntent(params = {}) {
     aestheticMood = 'Spacious white cube gallery lighting, museum track spotlights, minimalist architectural negative space';
     baseKeywords = ['contemporary sculpture', 'abstract canvas art', 'gallery exhibition hall', 'curated modern art'];
     domainNegatives.push('cars', 'sushi', 'mobile phones', 'ice cream', 'dental clinic', 'motorcycles');
-  } else if (/book|bookstore|literature|reading|library|author|novel/i.test(combined)) {
-    primaryDomain = 'INDEPENDENT_BOOKSTORE';
-    aestheticMood = 'Warm atmospheric golden lighting, handcrafted wooden bookshelves, textured hardcover paper, cozy reading nook';
-    baseKeywords = ['curated bookstore shelves', 'open literature pages', 'hardcover book stack', 'reading room'];
-    domainNegatives.push('skyscraper', 'office tower', 'corporate glass', 'cars', 'motorcycles', 'fast food', 'dental chair', 'smartphones');
   } else if (/coffee|cafe|espresso|barista|roastery/i.test(combined)) {
     primaryDomain = 'SPECIALTY_COFFEE';
     aestheticMood = 'Warm specialty cafe interior, steam, rich espresso crema, artisan ceramic mugs, cozy wood aesthetic';
     baseKeywords = ['latte art cup', 'pour over coffee dripper', 'roasted coffee beans', 'espresso machine bar'];
     domainNegatives.push('cars', 'smartphones', 'dental', 'office skyscraper', 'ice cream cone');
-  } else if (/retreat|lodge|mountain|resort|hotel|cabin/i.test(combined)) {
-    primaryDomain = 'HOSPITALITY_RETREAT';
-    aestheticMood = 'Breathtaking natural alpine sunrise, rustic wooden architectural accents, panoramic scenic views';
-    baseKeywords = ['luxury mountain lodge', 'scenic forest retreat', 'cozy chalet interior', 'alpine panorama'];
-    domainNegatives.push('office cubicle', 'supermarket', 'dental chair', 'traffic highway');
   } else if (/spa|wellness|skincare|cosmetics|beauty/i.test(combined)) {
     primaryDomain = 'WELLNESS_SPA';
     aestheticMood = 'Calm serene zen atmosphere, soft water reflections, bamboo and organic skincare oils, soft neutral tones';
@@ -104,16 +139,6 @@ function inferDomainAndVisualIntent(params = {}) {
     aestheticMood = 'Dynamic modern athletic or luxury leather footwear lighting, crisp sole and stitching details, 8k commercial photography';
     baseKeywords = ['premium leather shoes', 'athletic running sneakers', 'designer footwear display'];
     domainNegatives.push('food', 'pizza', 'sushi', 'flowers bouquet', 'cars', 'smartphones');
-  } else if (/furniture|interior|decor|sofa|chair|table|homeware/i.test(combined)) {
-    primaryDomain = 'FURNITURE_HOME';
-    aestheticMood = 'Spacious Scandinavian interior daylight, natural wood grain and fabric textures, warm architectural styling';
-    baseKeywords = ['modern designer sofa', 'solid oak dining table', 'minimalist home interior living room'];
-    domainNegatives.push('motorcycles', 'fast food', 'dental chair', 'supercars');
-  } else if (/god|deity|portrait|spiritual|devotional|hindu|krishna|shiva|ganesha|ram|hanuman|temple|sacred|divine/i.test(combined)) {
-    primaryDomain = 'DEVOTIONAL_SPIRITUAL_ART';
-    aestheticMood = 'Warm golden devotional lighting, rich traditional oil on canvas textures, ornate brass embellishments, sacred gallery aesthetic';
-    baseKeywords = ['sacred deity portrait', 'traditional devotional canvas art', 'ornate handcrafted spiritual painting', 'sacred idol artwork'];
-    domainNegatives.push('laptops', 'office desks', 'cheap plastic', 'supercars', 'motorcycles', 'dental clinic', 'fast food');
   } else if (/fitness|gym|workout|crossfit|training|yoga|athletic/i.test(combined)) {
     primaryDomain = 'FITNESS_GYM';
     aestheticMood = 'High-energy cinematic gym lighting, dramatic contrast, sleek modern athletic equipment';
@@ -124,6 +149,16 @@ function inferDomainAndVisualIntent(params = {}) {
     aestheticMood = 'Warm playful natural daylight, cheerful happy pets, clean veterinary and grooming setting';
     baseKeywords = ['happy golden retriever dog', 'playful cat kitten', 'artisan pet accessories'];
     domainNegatives.push('motorcycles', 'supercars', 'office cubicle', 'dental surgery');
+  } else if (/saas|software|dashboard|ai tool|platform|cloud app|coding/i.test(combined)) {
+    primaryDomain = 'TECH_SAAS_SOFTWARE';
+    aestheticMood = 'Clean futuristic UI aesthetic, dark theme glow, sleek glassmorphism workstations, modern software interface';
+    baseKeywords = ['analytics dashboard interface', 'modern software platform', 'ai workspace workspace', 'cloud technology visual'];
+    domainNegatives.push('food', 'pizza', 'flowers bouquet', 'dental clinic', 'farm animals');
+  } else if (/furniture|sofa|couch|dining table|chair|cabinet|homeware|interior design|interior styling/i.test(combined)) {
+    primaryDomain = 'FURNITURE_HOME';
+    aestheticMood = 'Spacious Scandinavian interior daylight, natural wood grain and fabric textures, warm architectural styling';
+    baseKeywords = ['modern designer sofa', 'solid oak dining table', 'minimalist home interior living room'];
+    domainNegatives.push('motorcycles', 'fast food', 'dental chair', 'supercars');
   }
 
   return {
@@ -202,6 +237,63 @@ function planAssetSpec(params = {}) {
 }
 
 const CURATED_DOMAIN_ASSETS = {
+  DEVOTIONAL_SPIRITUAL_ART: [
+    { keywords: ['hero', 'gallery', 'devotional', 'portrait', 'spiritual', 'eternal', 'sacred', 'divine', 'presence'], url: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['krishna', 'portrait', 'canvas', 'painting', 'crafted', 'generations', 'radha', 'deity'], url: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['shiva', 'ganesha', 'idol', 'brass', 'sculpture', 'bronze', 'meditation'], url: 'https://images.unsplash.com/photo-1608889825205-eebdb9fc5806?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['temple', 'sacred', 'architecture', 'gold', 'preservation', 'heritage'], url: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['traditional', 'art', 'frame', 'handcrafted', 'artisan', 'wooden frame'], url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['puja', 'oil', 'canvas', 'devotion', 'artistry', 'divine canvas', 'spiritual artwork'], url: 'https://images.unsplash.com/photo-1577083552431-6e5fd01aa342?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  JEWELRY_LUXURY: [
+    { keywords: ['hero', 'jewelry', 'collection', 'diamond', 'luxury'], url: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['ring', 'diamond', 'solitaire', 'gold', 'engagement'], url: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['necklace', 'pendant', 'gold', 'emerald', 'gemstone'], url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['earring', 'studs', 'pearl', 'sapphire'], url: 'https://images.unsplash.com/photo-1630019852942-f89202989a59?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['bracelet', 'bangle', 'cuff', 'platinum'], url: 'https://images.unsplash.com/photo-1611591475883-cf2377317926?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  PERFUME_FRAGRANCE: [
+    { keywords: ['hero', 'perfume', 'fragrance', 'luxury', 'scent'], url: 'https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['bottle', 'amber', 'glass', 'attar', 'cologne'], url: 'https://images.unsplash.com/photo-1547887537-6158d64c35b3?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['mist', 'floral', 'botanical', 'extract'], url: 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  BAKERY_CAFE: [
+    { keywords: ['hero', 'bakery', 'artisan', 'bread', 'pastry'], url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['sourdough', 'loaf', 'crust', 'flour', 'rustic'], url: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['croissant', 'danish', 'flaky', 'butter'], url: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['cake', 'chocolate', 'patisserie', 'dessert'], url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  ORGANIC_TEA: [
+    { keywords: ['hero', 'tea', 'matcha', 'organic', 'herbal'], url: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['matcha', 'whisk', 'bowl', 'japanese', 'green'], url: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['leaves', 'loose', 'chai', 'steeping', 'cup'], url: 'https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  RESTAURANT_DINING: [
+    { keywords: ['hero', 'restaurant', 'dining', 'gourmet', 'bistro'], url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['pizza', 'wood-fired', 'italian', 'crust'], url: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['burger', 'gourmet', 'fries', 'bacon'], url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['plate', 'fine dining', 'chef', 'culinary'], url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  DENTAL_HEALTHCARE: [
+    { keywords: ['hero', 'dental', 'clinic', 'smile', 'care'], url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['smile', 'teeth', 'whitening', 'aesthetic'], url: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['dentist', 'consultation', 'doctor', 'treatment'], url: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  REAL_ESTATE_ARCHITECTURE: [
+    { keywords: ['hero', 'villa', 'estate', 'property', 'luxury'], url: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['penthouse', 'interior', 'apartment', 'living'], url: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['pool', 'modern', 'exterior', 'architecture'], url: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  FASHION_APPAREL: [
+    { keywords: ['hero', 'fashion', 'boutique', 'couture', 'model'], url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['dress', 'silk', 'designer', 'outfit', 'gown'], url: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['streetwear', 'jacket', 'urban', 'casual'], url: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  TECH_SAAS_SOFTWARE: [
+    { keywords: ['hero', 'saas', 'software', 'dashboard', 'ai'], url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['analytics', 'charts', 'data', 'interface'], url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['workspace', 'code', 'developer', 'workstation'], url: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1200&q=80' }
+  ],
   FURNITURE_HOME: [
     { keywords: ['sofa', 'couch', 'seating', 'boucle', 'aurelia'], url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80' },
     { keywords: ['table', 'travertine', 'coffee', 'marble', 'soren'], url: 'https://images.unsplash.com/photo-1533090161767-e6ffed986b88?auto=format&fit=crop&w=1200&q=80' },
@@ -258,13 +350,34 @@ const CURATED_DOMAIN_ASSETS = {
     { keywords: ['leather', 'briefcase', 'work', 'tote'], url: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=1200&q=80' },
     { keywords: ['school', 'canvas', 'daypack', 'rucksack'], url: 'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?auto=format&fit=crop&w=1200&q=80' }
   ],
-  DEVOTIONAL_SPIRITUAL_ART: [
-    { keywords: ['hero', 'gallery', 'devotional', 'portrait', 'spiritual', 'eternal', 'sacred', 'divine'], url: 'https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1200&q=80' },
-    { keywords: ['krishna', 'portrait', 'canvas', 'painting', 'crafted', 'generations'], url: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80' },
-    { keywords: ['shiva', 'ganesha', 'idol', 'brass', 'sculpture'], url: 'https://images.unsplash.com/photo-1608889825205-eebdb9fc5806?auto=format&fit=crop&w=1200&q=80' },
-    { keywords: ['temple', 'sacred', 'architecture', 'gold', 'preservation'], url: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80' },
-    { keywords: ['traditional', 'art', 'frame', 'handcrafted', 'heritage'], url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=80' },
-    { keywords: ['puja', 'oil', 'canvas', 'devotion', 'artistry'], url: 'https://images.unsplash.com/photo-1577083552431-6e5fd01aa342?auto=format&fit=crop&w=1200&q=80' }
+  SHOES_FOOTWEAR: [
+    { keywords: ['hero', 'sneaker', 'shoes', 'footwear'], url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['leather', 'oxford', 'boots', 'formal'], url: 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['athletic', 'runner', 'sports', 'trainer'], url: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  FITNESS_GYM: [
+    { keywords: ['hero', 'gym', 'fitness', 'workout', 'weights'], url: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['dumbbells', 'training', 'muscle', 'bodybuilding'], url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['yoga', 'stretch', 'pilates', 'studio'], url: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  PET_CARE: [
+    { keywords: ['hero', 'dog', 'pet', 'cat', 'animals'], url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['puppy', 'golden', 'retriever', 'care'], url: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['kitten', 'cat', 'playful', 'grooming'], url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  WELLNESS_SPA: [
+    { keywords: ['hero', 'spa', 'wellness', 'massage', 'relax'], url: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['oils', 'skincare', 'serum', 'botanical'], url: 'https://images.unsplash.com/photo-1556760544-74068565f05c?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['stones', 'facial', 'treatment', 'zen'], url: 'https://images.unsplash.com/photo-1507652313519-d4e9174996dd?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  CONTEMPORARY_ART: [
+    { keywords: ['hero', 'gallery', 'art', 'exhibition', 'museum'], url: 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['sculpture', 'modern', 'abstract', 'canvas'], url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['painting', 'contemporary', 'artist', 'studio'], url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=80' }
+  ],
+  INDEPENDENT_BOOKSTORE: [
+    { keywords: ['hero', 'books', 'bookstore', 'library', 'reading'], url: 'https://images.unsplash.com/photo-1507842229458-577749e472f3?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['novel', 'hardcover', 'pages', 'stack'], url: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80' }
   ],
   GENERAL_COMMERCE: [
     { keywords: ['hero', 'modern', 'brand', 'store'], url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=80' },
@@ -275,25 +388,35 @@ const CURATED_DOMAIN_ASSETS = {
 
 /**
  * Universal Dynamic Candidate Generator:
- * Generates an untrusted candidate image using AI generative synthesis or domain-bound semantic retrieval.
+ * Generates an untrusted candidate image using domain-bound semantic scoring retrieval.
  */
 function generateOrFetchCandidate(assetSpec, attemptIndex = 0, tracker = new Set()) {
   const domain = assetSpec.domain || 'GENERAL_COMMERCE';
   const pool = CURATED_DOMAIN_ASSETS[domain] || CURATED_DOMAIN_ASSETS.GENERAL_COMMERCE;
   const targetText = `${assetSpec.requestedSubject || ''} ${assetSpec.imagePrompt || ''} ${assetSpec.purpose || ''}`.toLowerCase();
 
-  // Find matching items in pool that have not yet been used
-  const unusedPool = pool.filter(item => !tracker.has(item.url));
-  const activePool = unusedPool.length > 0 ? unusedPool : pool;
+  // Score each candidate by keyword overlap with the requested item/section subject
+  const scoredPool = pool.map(item => {
+    let score = 0;
+    for (const kw of item.keywords) {
+      if (targetText.includes(kw.toLowerCase())) {
+        score += 2;
+      }
+    }
+    const isUnused = !tracker.has(item.url);
+    return { item, score, isUnused };
+  });
 
-  let matched = activePool.find(item => item.keywords.some(k => targetText.includes(k)));
-  if (!matched && activePool.length > 0) {
-    matched = activePool[attemptIndex % activePool.length];
-  }
+  // Sort by unused first, then by score descending
+  scoredPool.sort((a, b) => {
+    if (a.isUnused !== b.isUnused) return a.isUnused ? -1 : 1;
+    return b.score - a.score;
+  });
 
-  let candidateUrl = matched ? matched.url : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=80';
+  const selected = scoredPool[attemptIndex % scoredPool.length]?.item || pool[0];
+  let candidateUrl = selected ? selected.url : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=80';
 
-  // If URL is already tracked, make it unique with a deterministic signature
+  // Ensure uniqueness if URL already used
   if (tracker.has(candidateUrl)) {
     const sep = candidateUrl.includes('?') ? '&' : '?';
     candidateUrl = `${candidateUrl}${sep}sig=${crypto.randomInt(1000, 9999)}`;
