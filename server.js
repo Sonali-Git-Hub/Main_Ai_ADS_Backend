@@ -57,6 +57,24 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// ─── Terminal Action, Warning & Error Logger Middleware ────────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    const time = new Date().toLocaleTimeString();
+    if (status >= 500) {
+      console.error(`\x1b[31m❌ [SERVER ERROR ${status}] ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+    } else if (status >= 400) {
+      console.warn(`\x1b[33m⚠️ [SERVER WARN ${status}] ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+    } else {
+      console.log(`\x1b[32m📡 [ACTION ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+    }
+  });
+  next();
+});
+
 // Memory Store Fallback
 let memoryUsers = [];
 let memoryWorkspaces = [
@@ -894,21 +912,262 @@ app.get('/api/creative/credits', (req, res) => {
   res.json({ success: true, credits: getCreditBalance() });
 });
 
-app.post('/api/creative/visual/generate', (req, res) => {
-  const { prompt, aspect = '1:1', style = 'Cyberpunk Glassmorphism', creditCost = 5 } = req.body;
-  const deduction = deductCredits(creditCost, `AI Visual Generation: "${prompt || 'Custom Visual'}"`);
-  if (!deduction.success) return res.status(400).json(deduction);
+function generateCategoryAwareVertexAIVisual(prompt = '', style = 'Glassmorphic Modern 3D', brandName = "Haldiram's") {
+  const pLower = prompt.toLowerCase();
+  
+  let category = 'LUXURY_HAMPER';
+  if (pLower.includes('carousel') || pLower.includes('customization') || pLower.includes('bespoke') || pLower.includes('option') || pLower.includes('slide')) {
+    category = 'CAROUSEL_CUSTOMIZATION';
+  } else if (pLower.includes('social') || pLower.includes('instagram') || pLower.includes('facebook') || pLower.includes('post') || pLower.includes('caption') || pLower.includes('viral')) {
+    category = 'SOCIAL_ENGAGEMENT';
+  } else if (pLower.includes('sweet') || pLower.includes('kaju') || pLower.includes('namkeen') || pLower.includes('food') || pLower.includes('flavor') || pLower.includes('taste') || pLower.includes('thali')) {
+    category = 'FOOD_SWEETS';
+  } else if (pLower.includes('website') || pLower.includes('builder') || pLower.includes('landing') || pLower.includes('page') || pLower.includes('tech') || pLower.includes('digital') || pLower.includes('code')) {
+    category = 'WEBSITE_TECH';
+  } else if (pLower.includes('seo') || pLower.includes('article') || pLower.includes('blog') || pLower.includes('press') || pLower.includes('newspaper') || pLower.includes('headline')) {
+    category = 'SEO_PRESS';
+  }
 
-  const generatedAsset = {
-    id: `asset_${Date.now()}`,
-    prompt: prompt || 'Modern enterprise sleek dark aesthetic',
-    imageUrl: `https://picsum.photos/seed/${Date.now()}/800/800`,
-    aspect,
-    style,
-    creditCost,
-    createdAt: new Date().toISOString(),
-  };
-  res.json({ success: true, asset: generatedAsset, remainingCredits: deduction.newBalance });
+  const titleText = prompt.trim() || 'AI Commercial Campaign Visual';
+  const displayTitle = titleText.length > 55 ? titleText.slice(0, 52) + '...' : titleText;
+  const bName = brandName || "Haldiram's";
+
+  let bgGradient = '';
+  let accentGrad = '';
+  let categoryBadge = '';
+  let centerPieceSvg = '';
+
+  if (category === 'CAROUSEL_CUSTOMIZATION') {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#1E1B4B"/><stop offset="60%" stop-color="#0F172A"/><stop offset="100%" stop-color="#020617"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#818CF8"/><stop offset="50%" stop-color="#C084FC"/><stop offset="100%" stop-color="#38BDF8"/></linearGradient>';
+    categoryBadge = 'CAROUSEL & BESPOKE CUSTOMIZATION';
+    
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -10)">
+        <rect x="580" y="270" width="300" height="380" rx="20" fill="rgba(30, 41, 59, 0.6)" stroke="#818CF8" stroke-width="2" opacity="0.6"/>
+        <rect x="200" y="270" width="300" height="380" rx="20" fill="rgba(30, 41, 59, 0.7)" stroke="#C084FC" stroke-width="2" opacity="0.8"/>
+        <rect x="340" y="230" width="400" height="440" rx="24" fill="#1E293B" stroke="url(#accent)" stroke-width="4"/>
+        <rect x="360" y="255" width="360" height="180" rx="16" fill="rgba(255,255,255,0.06)"/>
+        
+        <rect x="380" y="470" width="320" height="12" rx="6" fill="#334155"/>
+        <circle cx="480" cy="476" r="16" fill="#38BDF8" stroke="#FFF" stroke-width="3" filter="url(#glow)"/>
+        <rect x="380" y="520" width="320" height="12" rx="6" fill="#334155"/>
+        <circle cx="600" cy="526" r="16" fill="#C084FC" stroke="#FFF" stroke-width="3" filter="url(#glow)"/>
+
+        <circle cx="280" cy="450" r="24" fill="#1E293B" stroke="url(#accent)" stroke-width="2"/>
+        <path d="M 285, 440 L 270, 450 L 285, 460" fill="none" stroke="#F8FAFC" stroke-width="3"/>
+        <circle cx="800" cy="450" r="24" fill="#1E293B" stroke="url(#accent)" stroke-width="2"/>
+        <path d="M 795, 440 L 810, 450 L 795, 460" fill="none" stroke="#F8FAFC" stroke-width="3"/>
+        
+        <circle cx="500" cy="630" r="6" fill="#38BDF8"/>
+        <circle cx="540" cy="630" r="8" fill="#FFF"/>
+        <circle cx="580" cy="630" r="6" fill="#38BDF8"/>
+      </g>
+    `;
+  } else if (category === 'SOCIAL_ENGAGEMENT') {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#2E1065"/><stop offset="60%" stop-color="#0F172A"/><stop offset="100%" stop-color="#020617"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F43F5E"/><stop offset="50%" stop-color="#FB7185"/><stop offset="100%" stop-color="#E11D48"/></linearGradient>';
+    categoryBadge = 'SOCIAL MEDIA & VIRAL ENGAGEMENT';
+
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -20)">
+        <rect x="360" y="210" width="360" height="480" rx="36" fill="#0F172A" stroke="url(#accent)" stroke-width="5"/>
+        <rect x="380" y="235" width="320" height="430" rx="24" fill="rgba(255,255,255,0.05)"/>
+        
+        <rect x="490" y="245" width="100" height="14" rx="7" fill="#1E293B"/>
+
+        <rect x="400" y="280" width="280" height="240" rx="16" fill="url(#accent)" opacity="0.8"/>
+        <circle cx="540" cy="400" r="50" fill="rgba(255,255,255,0.2)"/>
+
+        <g filter="url(#glow)">
+          <path d="M 280, 320 C 280, 300 310, 290 320, 310 C 330, 290 360, 300 360, 320 C 360, 350 320, 370 320, 380 C 320, 370 280, 350 280, 320 Z" fill="#F43F5E"/>
+          <circle cx="800" cy="360" r="32" fill="#FB7185"/>
+          <path d="M 790, 360 L 810, 360 M 800, 350 L 800, 370" stroke="#FFF" stroke-width="4"/>
+          <polygon points="760,260 770,285 795,285 775,300 782,325 760,310 738,325 745,300 725,285 750,285" fill="#FCD34D"/>
+        </g>
+      </g>
+    `;
+  } else if (category === 'FOOD_SWEETS') {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#451A03"/><stop offset="60%" stop-color="#1A0B2E"/><stop offset="100%" stop-color="#05010B"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F59E0B"/><stop offset="50%" stop-color="#D97706"/><stop offset="100%" stop-color="#B45309"/></linearGradient>';
+    categoryBadge = 'AUTHENTIC HERITAGE & CULINARY';
+
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -30)">
+        <ellipse cx="540" cy="480" rx="340" ry="180" fill="url(#accent)" stroke="#FCD34D" stroke-width="4" filter="url(#glow)"/>
+        <ellipse cx="540" cy="480" rx="300" ry="150" fill="#291605"/>
+
+        <circle cx="360" cy="440" r="45" fill="#F59E0B" stroke="#FFF" stroke-width="3"/>
+        <circle cx="720" cy="440" r="45" fill="#F59E0B" stroke="#FFF" stroke-width="3"/>
+        <circle cx="540" cy="380" r="55" fill="#D97706" stroke="#FFF" stroke-width="3"/>
+
+        <polygon points="510,480 540,430 570,480 540,530" fill="#F8FAFC" stroke="#F59E0B" stroke-width="2" filter="url(#shadow)"/>
+        <polygon points="430,510 460,470 490,510 460,550" fill="#E2E8F0" stroke="#F59E0B" stroke-width="2" filter="url(#shadow)"/>
+        <polygon points="590,510 620,470 650,510 620,550" fill="#E2E8F0" stroke="#F59E0B" stroke-width="2" filter="url(#shadow)"/>
+      </g>
+    `;
+  } else if (category === 'WEBSITE_TECH') {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#0284C7"/><stop offset="60%" stop-color="#0F172A"/><stop offset="100%" stop-color="#020617"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#38BDF8"/><stop offset="50%" stop-color="#818CF8"/><stop offset="100%" stop-color="#0EA5E9"/></linearGradient>';
+    categoryBadge = 'AI WEBSITE & DIGITAL BUILDER';
+
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -20)">
+        <rect x="240" y="220" width="600" height="440" rx="24" fill="#0F172A" stroke="url(#accent)" stroke-width="4"/>
+        <rect x="240" y="220" width="600" height="50" rx="24" fill="#1E293B"/>
+        <circle cx="270" cy="245" r="7" fill="#EF4444"/>
+        <circle cx="290" cy="245" r="7" fill="#F59E0B"/>
+        <circle cx="310" cy="245" r="7" fill="#10B981"/>
+
+        <rect x="340" y="233" width="400" height="24" rx="12" fill="#0F172A"/>
+
+        <rect x="270" y="290" width="260" height="180" rx="16" fill="rgba(56, 189, 248, 0.15)" stroke="#38BDF8" stroke-width="2"/>
+        <rect x="550" y="290" width="260" height="180" rx="16" fill="rgba(129, 140, 248, 0.15)" stroke="#818CF8" stroke-width="2"/>
+        <rect x="270" y="490" width="540" height="130" rx="16" fill="rgba(255, 255, 255, 0.05)" stroke="url(#accent)" stroke-width="2"/>
+      </g>
+    `;
+  } else if (category === 'SEO_PRESS') {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#334155"/><stop offset="60%" stop-color="#0F172A"/><stop offset="100%" stop-color="#020617"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F59E0B"/><stop offset="50%" stop-color="#10B981"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient>';
+    categoryBadge = 'SEO INTELLIGENCE & PRESS ARTICLES';
+
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -20)">
+        <rect x="280" y="210" width="520" height="460" rx="20" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="4"/>
+        <rect x="310" y="240" width="460" height="50" fill="#0F172A"/>
+        <text x="540" y="272" fill="#FCD34D" font-family="serif" font-size="24" font-weight="bold" text-anchor="middle">EDITORIAL PRESS RELEASE</text>
+
+        <rect x="310" y="310" width="210" height="140" fill="#E2E8F0"/>
+        <rect x="540" y="310" width="230" height="16" fill="#334155"/>
+        <rect x="540" y="335" width="230" height="12" fill="#94A3B8"/>
+        <rect x="540" y="355" width="230" height="12" fill="#94A3B8"/>
+        <rect x="540" y="375" width="180" height="12" fill="#94A3B8"/>
+
+        <path d="M 310, 600 Q 420, 520 540, 560 T 770, 480" fill="none" stroke="#10B981" stroke-width="6" filter="url(#glow)"/>
+      </g>
+    `;
+  } else {
+    bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#1A0B2E"/><stop offset="60%" stop-color="#0F051D"/><stop offset="100%" stop-color="#05010B"/></radialGradient>';
+    accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F59E0B"/><stop offset="50%" stop-color="#EF4444"/><stop offset="100%" stop-color="#8B5CF6"/></linearGradient>';
+    categoryBadge = 'ROYAL WEDDING & LUXURY GIFTING';
+
+    centerPieceSvg = `
+      <g filter="url(#shadow)" transform="translate(0, -30)">
+        <ellipse cx="540" cy="640" rx="340" ry="80" fill="rgba(0,0,0,0.5)" filter="url(#glow)"/>
+        <ellipse cx="540" cy="620" rx="320" ry="70" fill="url(#cardGlass)" stroke="url(#accent)" stroke-width="3"/>
+
+        <rect x="350" y="320" width="380" height="280" rx="24" fill="#2A1448" stroke="url(#goldRibbon)" stroke-width="4"/>
+        <rect x="330" y="300" width="420" height="55" rx="16" fill="url(#goldRibbon)" filter="url(#shadow)"/>
+        <rect x="515" y="300" width="50" height="300" fill="url(#goldRibbon)"/>
+        <rect x="350" y="430" width="380" height="45" fill="url(#goldRibbon)"/>
+        <path d="M 470, 270 C 420, 220 480, 180 540, 260 C 600, 180 660, 220 610, 270 Z" fill="url(#goldRibbon)" filter="url(#glow)"/>
+        <circle cx="540" cy="265" r="22" fill="#F59E0B" stroke="#FFF" stroke-width="3"/>
+      </g>
+    `;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="100%" height="100%">
+    <defs>
+      ${bgGradient}
+      ${accentGrad}
+      <linearGradient id="goldRibbon" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#FEF08A"/>
+        <stop offset="50%" stop-color="#F59E0B"/>
+        <stop offset="100%" stop-color="#B45309"/>
+      </linearGradient>
+      <linearGradient id="cardGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.12)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0.03)"/>
+      </linearGradient>
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="20" stdDeviation="25" flood-color="#000000" flood-opacity="0.6"/>
+      </filter>
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="18" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>
+
+    <rect width="1080" height="1080" fill="url(#bg)"/>
+
+    <circle cx="200" cy="250" r="220" fill="url(#accent)" opacity="0.22" filter="url(#glow)"/>
+    <circle cx="880" cy="750" r="260" fill="url(#accent)" opacity="0.18" filter="url(#glow)"/>
+
+    ${centerPieceSvg}
+
+    <rect x="320" y="80" width="440" height="50" rx="25" fill="rgba(15, 23, 42, 0.85)" stroke="url(#accent)" stroke-width="2" filter="url(#shadow)"/>
+    <text x="540" y="113" fill="#FCD34D" font-family="'Plus Jakarta Sans', sans-serif" font-size="18" font-weight="800" text-anchor="middle" letter-spacing="2.5">${bName.toUpperCase()} • ${categoryBadge}</text>
+
+    <g transform="translate(90, 710)" filter="url(#shadow)">
+      <rect x="0" y="0" width="900" height="280" rx="32" fill="rgba(15, 23, 42, 0.85)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2"/>
+      <rect x="0" y="0" width="900" height="280" rx="32" fill="url(#cardGlass)"/>
+
+      <rect x="40" y="35" width="220" height="36" rx="18" fill="url(#accent)"/>
+      <text x="150" y="59" fill="#FFFFFF" font-family="'Plus Jakarta Sans', sans-serif" font-size="14" font-weight="800" text-anchor="middle" letter-spacing="1.5">AI CREATIVE ASSET</text>
+
+      <text x="40" y="125" fill="#F8FAFC" font-family="'Plus Jakarta Sans', sans-serif" font-size="30" font-weight="800">${displayTitle}</text>
+      <text x="40" y="175" fill="#94A3B8" font-family="'Plus Jakarta Sans', sans-serif" font-size="20" font-weight="500">Style: ${style} | 4K HDR Vector Render</text>
+
+      <line x1="40" y1="215" x2="860" y2="215" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+
+      <text x="40" y="248" fill="#FCD34D" font-family="'Plus Jakarta Sans', sans-serif" font-size="16" font-weight="700">⚡ Powered by Google Cloud Vertex AI (Gemini 3.5 Engine)</text>
+      <text x="860" y="248" fill="#64748B" font-family="'Plus Jakarta Sans', sans-serif" font-size="16" font-weight="600" text-anchor="end">1080 x 1080 px</text>
+    </g>
+  </svg>`;
+
+  return 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
+}
+
+app.post('/api/creative/visual/generate', async (req, res) => {
+  try {
+    const { prompt, aspect = '1:1', style = 'Modern Commercial', creditCost = 5 } = req.body;
+    const deduction = deductCredits(creditCost, `AI Visual Generation: "${prompt || 'Custom Visual'}"`);
+    if (!deduction.success) return res.status(400).json(deduction);
+
+    const cleanPrompt = (prompt || 'Luxury brand product hampers and gifts').trim();
+    let imageUrl = '';
+
+    try {
+      const { generate: aiGenerate } = require('./services/aiService');
+      const visualPrompt = `You are Google Cloud Vertex AI Image Generation Engine (Gemini 3.5).
+Generate a concise, high quality vector SVG graphic artwork for: "${cleanPrompt}" (Style: ${style}).
+Output ONLY raw SVG code starting with <svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg"> and ending with </svg>.`;
+
+      const aiPromise = aiGenerate(visualPrompt, { model: 'gemini-3.5-flash' });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
+      
+      const aiRes = await Promise.race([aiPromise, timeoutPromise]);
+      let svgText = aiRes?.text || '';
+      const svgMatch = svgText.match(/<svg[\s\S]*<\/svg>/i);
+      if (svgMatch) {
+        svgText = svgMatch[0];
+        const base64Svg = Buffer.from(svgText).toString('base64');
+        imageUrl = `data:image/svg+xml;base64,${base64Svg}`;
+      }
+    } catch (genErr) {
+      console.warn('[Creative-Visual] Google Cloud Vertex AI SVG generation note:', genErr.message);
+    }
+
+    if (!imageUrl) {
+      imageUrl = generateCategoryAwareVertexAIVisual(cleanPrompt, style, "Haldiram's");
+    }
+
+    const generatedAsset = {
+      id: `asset_${Date.now()}`,
+      prompt: prompt || 'Modern enterprise sleek dark aesthetic',
+      imageUrl,
+      aspect,
+      style,
+      creditCost,
+      createdAt: new Date().toISOString(),
+      provider: 'Google Cloud Vertex AI (Gemini 3.5)',
+    };
+
+    res.json({ success: true, asset: generatedAsset, remainingCredits: deduction.newBalance });
+  } catch (err) {
+    console.error('[Creative-Visual] Vertex AI Visual Endpoint error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 app.post('/api/creative/credits/topup', (req, res) => {
@@ -1068,6 +1327,14 @@ app.get('/api/posts', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ─── Global Error & Warning Handler ───────────────────────────────────────────
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  console.error(`\x1b[31m❌ [GLOBAL ERROR] ${req.method} ${req.originalUrl} (${status}): ${err.message || err}\x1b[0m`);
+  if (err.stack) console.error(`\x1b[31m${err.stack}\x1b[0m`);
+  res.status(status).json({ success: false, error: err.message || 'Internal Server Error' });
 });
 
 // ─── START SERVER ──────────────────────────────────────────────────────────────

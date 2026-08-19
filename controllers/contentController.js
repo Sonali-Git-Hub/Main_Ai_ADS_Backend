@@ -6,14 +6,25 @@ const { generate, generateJSON } = require('../services/aiService');
 const BrandProfile = require('../models/BrandProfile');
 const Content = require('../models/Content');
 
+const Workspace = require('../models/Workspace');
+
 // ─── Helper: Get brand context ────────────────────────────────────────────────
-const getBrandContext = async (workspaceId) => {
-  if (!workspaceId) return '';
-  try {
-    const brand = await BrandProfile.findOne({ workspaceId });
-    if (brand && brand.structuredIdentity) return JSON.stringify(brand.structuredIdentity, null, 2);
-  } catch {}
-  return '';
+const getBrandContext = async (workspaceId, directBrandName = '') => {
+  let context = '';
+  if (workspaceId) {
+    try {
+      const ws = await Workspace.findById(workspaceId);
+      if (ws) {
+        context += `Brand Name: ${ws.brandName}\nDomain: ${ws.domainUrl}\nIndustry: ${ws.industryCategory}\nTagline: ${ws.tagline || ''}\nMission: ${ws.missionStatement || ''}\nPositioning: ${ws.positioningSummary || ''}\nContent Pillars: ${(ws.contentPillars || []).join(', ')}\nTarget Audience: ${(ws.targetAudience || []).join(', ')}\n`;
+      }
+      const brand = await BrandProfile.findOne({ workspaceId });
+      if (brand && brand.structuredIdentity) context += '\n' + JSON.stringify(brand.structuredIdentity, null, 2);
+    } catch {}
+  }
+  if (!context && directBrandName) {
+    context = `Brand Name: ${directBrandName}`;
+  }
+  return context;
 };
 
 // ─── POST /api/content/social/generate ───────────────────────────────────────
@@ -21,6 +32,7 @@ exports.generateSocialPost = async (req, res) => {
   try {
     const {
       workspaceId,
+      brandName,
       platform = 'instagram',
       topic,
       tone = 'Professional',
@@ -32,34 +44,40 @@ exports.generateSocialPost = async (req, res) => {
 
     if (!topic) return res.status(400).json({ success: false, error: 'topic is required' });
 
-    const brandContext = await getBrandContext(workspaceId);
+    const brandContext = await getBrandContext(workspaceId, brandName);
 
-    const prompt = `Write a compelling ${platform} ${postType} post about: "${topic}"
+    const prompt = `You are a world-class social media strategist and copywriter.
+Write a highly engaging ${platform} ${postType} post about: "${topic}".
 
 Tone: ${tone}
-${brandContext ? `Brand Context:\n${brandContext}` : ''}
+${brandContext ? `BRAND CONTEXT (MANDATORY TO REFLECT IN POST):
+${brandContext}` : ''}
+
+CRITICAL RULES:
+1. Ensure the post is 100% tailored to the brand, products, tone, and audience described in Brand Context.
+2. DO NOT use generic software or unrelated placeholder topics unless specified.
 
 Return JSON with exact keys:
 {
-  "hook": "punchy headline or hook line (e.g. Upgrade Your Style with Discounts on Bottoms!)",
-  "shortCaption": "short concise caption (under 150 chars, e.g. Grab your trendy bottoms now at unbeatable prices! #ZaraStyle)",
-  "caption": "full detailed long caption (e.g. Discover our latest collection of bottoms with amazing discounts...)",
-  "longCaption": "full detailed long caption",
-  "cta": "engaging call to action (e.g. Hurry, grab yours now before they are gone!)",
-  "hashtags": ${includeHashtags ? '["#Discounts", "#BottomsSale", "#FashionStyle"]' : '[]'},
+  "hook": "punchy attention-grabbing hook line for ${topic}",
+  "shortCaption": "short concise caption (under 150 chars)",
+  "caption": "full engaging caption tailored specifically to the brand",
+  "longCaption": "extended detailed post caption with value points",
+  "cta": "strong call to action matching the brand goals",
+  "hashtags": ["#Hashtag1", "#Hashtag2", "#Hashtag3"],
   "creativeVariations": [
     {
       "type": "STORYTELLING ANGLE",
-      "text": "Storytelling perspective (e.g. Imagine stepping out in style with the latest bottoms...)"
+      "text": "narrative storytelling perspective on ${topic}"
     },
     {
       "type": "PROBLEM-SOLUTION",
-      "text": "Problem-solution perspective (e.g. Struggling to find fashion-forward bottoms that fit your budget?...)"
+      "text": "problem-solution perspective on ${topic}"
     }
   ],
-  "imagePrompt": "detailed visual description for AI image generation",
-  "bestTimeToPost": "e.g. 9-11 AM",
-  "expectedEngagement": "high"
+  "imagePrompt": "detailed photography & visual prompt for generating brand image",
+  "bestTimeToPost": "e.g. 9-11 AM EST",
+  "expectedEngagement": "High"
 }`;
 
     const result = await generateJSON(prompt, { model, temperature: 0.85 });
