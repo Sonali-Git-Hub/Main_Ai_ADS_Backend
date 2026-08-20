@@ -274,9 +274,9 @@ class ProjectSandboxService {
       }
     }
 
-    // Step B: Build project verification if dist/ missing
+    // Step B: Build project verification (always rebuild if forceRebuild or dist/ missing)
     const distPath = path.join(validDir, 'dist');
-    if (!fs.existsSync(distPath)) {
+    if (options.forceRebuild || !fs.existsSync(distPath)) {
       const buildRes = await this.buildProject(projectId, validDir, options);
       if (!buildRes.success) {
         return runtimeState;

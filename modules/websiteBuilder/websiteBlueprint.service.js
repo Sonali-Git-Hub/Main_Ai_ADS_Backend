@@ -65,7 +65,61 @@ function generateWebsiteBlueprint(requirement, approvedRecommendations = [], req
   const contentStrategy = requirement.contentStrategy || null;
 
   // 3. Process Pages & Page-Level Components
-  const rawPages = Array.isArray(requirement.proposedPages) ? requirement.proposedPages : [];
+  let rawPages = Array.isArray(requirement.proposedPages) ? [...requirement.proposedPages] : [];
+  const rawPrompt = (requirement.userIntent?.rawPrompt || requirement.businessType || '').toLowerCase();
+  const isSingleLandingPage = /single page|one page|landing page|coming soon/i.test(rawPrompt);
+
+  // Only decompose if it was NOT explicitly intended as a single landing page and has excessive grouped sections
+  if (!isSingleLandingPage && rawPages.length === 1 && Array.isArray(rawPages[0].recommendedSections) && rawPages[0].recommendedSections.length >= 5) {
+    const allSections = rawPages[0].recommendedSections;
+    const heroAndStats = allSections.filter((s) => ['HeroBanner', 'HeroSplit', 'HeroMinimal', 'StatsCounter', 'FeatureGrid', 'ValuePropositionGrid', 'TestimonialsCarousel', 'ReviewsGrid', 'CallToActionBanner'].includes(s.type));
+    const catalogAndServices = allSections.filter((s) => ['ItemCatalogGrid', 'RestaurantMenuCard', 'PricingPlansGrid', 'ServicesGrid', 'PortfolioGallery', 'HowItWorksGrid', 'ProcessSteps'].includes(s.type));
+    const teamAndStory = allSections.filter((s) => ['TeamGrid', 'FacultyGrid', 'ContentSectionCard'].includes(s.type));
+    const formsAndBooking = allSections.filter((s) => ['BookingForm', 'DemoRequestForm', 'ContactInquiryForm', 'CustomOrderForm', 'LocationHoursCard', 'GuideAccordion', 'FAQAccordion'].includes(s.type));
+
+    if (catalogAndServices.length > 0 || formsAndBooking.length > 0) {
+      const isCoaching = (requirement.industry || '').toLowerCase().includes('education') || (requirement.businessType || '').toLowerCase().includes('coaching') || (requirement.brandName || '').toLowerCase().includes('classes');
+      const isDining = requirement.domainArchetype === 'RESTAURANT_CULINARY';
+      const isStore = requirement.domainArchetype === 'ECOMMERCE_STORE';
+
+      const p2Name = isDining ? 'Menu & Dining' : (isStore ? 'Products & Shop' : (isCoaching ? 'Courses & Batches' : 'Offerings & Features'));
+      const p3Name = isCoaching ? 'Faculty & Admissions' : (isDining ? 'Reservations & Location' : (isStore ? 'Deals & Support' : 'Book & Contact'));
+
+      const homeSections = [];
+      const heroSection = allSections.find((s) => ['HeroBanner', 'HeroSplit', 'HeroMinimal'].includes(s.type)) || allSections[0];
+      if (heroSection) homeSections.push(heroSection);
+
+      const mainCatalog = allSections.find((s) => ['ItemCatalogGrid', 'RestaurantMenuCard', 'PricingPlansGrid'].includes(s.type));
+      if (mainCatalog && !homeSections.includes(mainCatalog)) homeSections.push(mainCatalog);
+
+      const statsOrFeature = allSections.filter((s) => ['StatsCounter', 'FeatureGrid', 'ValuePropositionGrid', 'TestimonialsCarousel', 'CallToActionBanner'].includes(s.type) && !homeSections.includes(s));
+      homeSections.push(...statsOrFeature.slice(0, 3));
+
+      rawPages = [
+        {
+          name: 'Home',
+          slug: 'home',
+          purpose: 'High-impact overview, featured offerings, quality pillars, and customer proof.',
+          source: 'user_requested',
+          recommendedSections: homeSections.length > 0 ? homeSections : [allSections[0]]
+        },
+        {
+          name: p2Name,
+          slug: p2Name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          purpose: 'Complete catalog and structured offerings details.',
+          source: 'user_requested',
+          recommendedSections: catalogAndServices.length > 0 ? catalogAndServices : [allSections[1] || allSections[0]]
+        },
+        {
+          name: p3Name,
+          slug: p3Name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          purpose: 'Interactive bookings, team background, FAQs, and contact inquiry.',
+          source: 'user_requested',
+          recommendedSections: (teamAndStory.length > 0 || formsAndBooking.length > 0) ? [...teamAndStory, ...formsAndBooking] : [allSections[allSections.length - 1]]
+        }
+      ];
+    }
+  }
 
   const blueprintPages = rawPages.map((page, idx) => {
     const pageName = page.name || `Page ${idx + 1}`;
@@ -151,7 +205,10 @@ function generateWebsiteBlueprint(requirement, approvedRecommendations = [], req
       primaryGoal: requirement.primaryGoal || '',
       contentTone: requirement.contentTone || 'professional'
     },
-    appType: requirement.appType || 'marketing_website',
+    domainArchetype: requirement.domainArchetype || 'CUSTOM_WEB_APP',
+    inferredCapabilities: Array.isArray(requirement.inferredCapabilities) ? requirement.inferredCapabilities : [],
+    userJourney: Array.isArray(requirement.userIntent?.primaryUserJourney) ? requirement.userIntent.primaryUserJourney : [],
+    appType: requirement.appType || 'interactive_app',
     websiteType: requirement.websiteType || (requirement.appType === 'interactive_app' ? 'Web Application' : 'Business Website'),
     designSpec: {
       theme: requirement.designPreferences?.theme || 'Modern Light',
@@ -186,8 +243,9 @@ function generateWebsiteBlueprint(requirement, approvedRecommendations = [], req
     contactRequirements,
     paymentCheckoutSpec,
     validationStatus: validateBlueprintSchema({ blueprintPages, userRequestedFeatures, paymentCheckoutSpec }),
-    // Visual design fingerprint — passed through to the code emitter
-    visualDesignSpec: requirement.visualDesignSpec || null
+    // Visual design fingerprint & Approved Asset Pool — passed through to the code emitter
+    visualDesignSpec: requirement.visualDesignSpec || null,
+    approvedAssetPool: requirement.approvedAssetPool || {}
   };
 
   console.log(`${correlationTag}Website Blueprint generated successfully. Pages: ${blueprintPages.length}, User Features: ${userRequestedFeatures.length}, Approved Recs: ${approvedRecFeatures.length}`);
@@ -220,8 +278,10 @@ function buildPageComponents(page, pageName, pagePurpose, pageSource, userReques
         title: section.title || `${pageName} Section`,
         purpose: section.purpose || pagePurpose,
         source: section.source || pageSource,
-        // contentSpec flows through unchanged — this is the key to generative content
-        contentSpec: section.contentSpec || null
+        // contentSpec, approvedAssetId & pre-generated imageUrl flow through unchanged
+        contentSpec: section.contentSpec || null,
+        imageUrl: section.imageUrl || null,
+        approvedAssetId: section.approvedAssetId || null
       });
     });
     return components;

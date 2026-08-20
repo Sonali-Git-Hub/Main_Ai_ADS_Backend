@@ -97,6 +97,38 @@ async function runWebsiteBuild(options = {}) {
     };
   }
 
+  // ─── STAGE 2.5: Sequential Visual Asset Generation ─────────────────────────
+  console.log(`${correlationTag}Executing Stage 2.5: Sequential Visual Asset Generation.`);
+  const p25Start = Date.now();
+  let visualAssetResult = null;
+  try {
+    const { generateWebsiteVisualAssetsSequential } = require('../services/visualAssetEngine.service');
+    visualAssetResult = await generateWebsiteVisualAssetsSequential(requirement, reqId);
+    requirement = visualAssetResult.requirement;
+    requirement.approvedAssetPool = visualAssetResult.approvedAssetPool || {};
+    pipeline.phaseVisualAssets = {
+      status: 'completed',
+      durationMs: Date.now() - p25Start,
+      totalAssets: visualAssetResult.totalAssets,
+      uniqueUrls: visualAssetResult.uniqueUrls
+    };
+    console.log(`${correlationTag}Phase 2.5 completed: ${visualAssetResult.totalAssets} assets planned, generated & validated.`);
+  } catch (assetErr) {
+    console.error(`${correlationTag}Phase 2.5 Visual Asset Generation failed:`, assetErr.message);
+    pipeline.phaseVisualAssets = {
+      status: 'failed',
+      durationMs: Date.now() - p25Start,
+      error: assetErr.message
+    };
+    return {
+      success: false,
+      reqId,
+      stage: 'phaseVisualAssets',
+      error: `Visual Asset Generation failed: ${assetErr.message}`,
+      pipeline
+    };
+  }
+
   // ─── STAGE 3: Blueprint Generation ─────────────────────────────────────────
   console.log(`${correlationTag}Executing Stage 3: Information Architecture Blueprint Generation.`);
   const p3Start = Date.now();
@@ -243,6 +275,8 @@ async function runWebsiteBuild(options = {}) {
     requirement,
     blueprint,
     website,
+    visualAssets: visualAssetResult?.assetManifest || [],
+    approvedAssetPool: visualAssetResult?.approvedAssetPool || {},
     sourceProject,
     runtime,
     validation: website.validationResult || { status: 'PASS', checks: [] },

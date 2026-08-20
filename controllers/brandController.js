@@ -192,7 +192,7 @@ exports.getBrandProfile = async (req, res) => {
     if (!profile && mongoose.Types.ObjectId.isValid(workspaceId)) {
       profile = await BrandProfile.findById(workspaceId);
     }
-    if (!profile) return res.status(404).json({ success: false, error: 'Brand profile not found' });
+    if (!profile) return res.json({ success: true, profile: null });
     res.json({ success: true, profile });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

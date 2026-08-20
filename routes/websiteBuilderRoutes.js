@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const WebsiteProject = require('../models/WebsiteProject');
 const WebsiteVersion = require('../models/WebsiteVersion');
+const storageService = require('../modules/websiteBuilder/services/ProjectStorageService');
 const { analyzeRequirement } = require('../modules/websiteBuilder/websiteBuilder.service');
 
 const { generateWebsiteBlueprint } = require('../modules/websiteBuilder/websiteBlueprint.service');
@@ -102,6 +104,40 @@ router.post('/build', async (req, res) => {
       });
     }
 
+    // Automatically persist WebsiteProject to repository
+    if (buildResult && buildResult.success) {
+      const projectId = buildResult.sourceProject?.projectId || buildResult.website?.websiteId || `proj_${Date.now()}`;
+      const projectTitle = buildResult.requirement?.proposedIdentity?.name ||
+                           buildResult.requirement?.businessType ||
+                           buildResult.website?.websiteIdentity?.title ||
+                           'Generated Web Application';
+      const wsId = req.body.workspaceId || brandContext?.workspaceId || 'default_ws';
+
+      try {
+        await WebsiteProject.findOneAndUpdate(
+          { projectId },
+          {
+            projectId,
+            workspaceId: wsId,
+            title: projectTitle,
+            businessType: buildResult.requirement?.businessType || 'Full-Stack App',
+            industry: buildResult.requirement?.industry || 'Technology & E-Commerce',
+            status: 'GENERATED',
+            activeVersion: 'v1',
+            blueprint: buildResult.blueprint,
+            website: buildResult.website,
+            requirement: buildResult.requirement,
+            runtime: buildResult.runtime,
+            updatedAt: new Date()
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+        console.log(`[WB:${reqId}] Persisted WebsiteProject document: ${projectId}`);
+      } catch (saveErr) {
+        console.warn(`[WB:${reqId}] Note: Project persist warning:`, saveErr.message);
+      }
+    }
+
     res.json({ success: true, build: buildResult, reqId });
   } catch (err) {
     console.error(`[WB:${reqId}] Build Orchestrator Route Error:`, err.message);
@@ -112,15 +148,36 @@ router.post('/build', async (req, res) => {
 // ─── GET /api/website-builder/projects ───────────────────────────────────────
 router.get('/projects', async (req, res) => {
   try {
-    const { workspaceId, limit = 20 } = req.query;
+    const { workspaceId, limit = 50 } = req.query;
     const filter = {};
-    if (workspaceId) filter.workspaceId = workspaceId;
+    if (workspaceId && workspaceId !== 'undefined' && workspaceId !== 'null') {
+      filter.$or = [{ workspaceId }, { workspaceId: 'default_ws' }];
+    }
 
     const projects = await WebsiteProject.find(filter)
       .sort({ updatedAt: -1 })
       .limit(Number(limit));
 
-    res.json({ success: true, projects });
+    // Auto-sync titles and identities from disk if siteData.js was modified via chat
+    const syncedProjects = projects.map(p => {
+      const pObj = p.toObject ? p.toObject() : p;
+      try {
+        const siteDataPath = path.join(storageService.getProjectVersionPath(pObj.projectId, pObj.activeVersion || 'v1'), 'src/data/siteData.js');
+        if (fs.existsSync(siteDataPath)) {
+          const raw = fs.readFileSync(siteDataPath, 'utf8');
+          const titleMatch = raw.match(/"title":\s*"([^"]+)"/);
+          if (titleMatch && titleMatch[1]) {
+            pObj.title = titleMatch[1];
+            if (pObj.website && pObj.website.websiteIdentity) {
+              pObj.website.websiteIdentity.title = titleMatch[1];
+            }
+          }
+        }
+      } catch (e) {}
+      return pObj;
+    });
+
+    res.json({ success: true, projects: syncedProjects });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -157,17 +214,179 @@ router.post('/projects', async (req, res) => {
   }
 });
 
+const fs = require('fs');
+const { generateCodeProject } = require('../modules/websiteBuilder/emitter/codeEmitter.service');
+
+async function ensureProjectOnDisk(project) {
+  if (!project) return false;
+  const projectId = project.projectId;
+  const version = project.activeVersion || 'v1';
+  const versionDir = storageService.getProjectVersionPath(projectId, version);
+
+  if (fs.existsSync(versionDir)) {
+    const files = fs.readdirSync(versionDir);
+    if (files.length > 0) return true;
+  }
+
+  // Self-heal: reconstruct code from website model or blueprint
+  console.log(`[AutoSelfHeal] Emitting missing project files to disk for ${projectId}...`);
+  try {
+    let websiteModel = project.website;
+    let blueprint = project.blueprint;
+    let requirement = project.requirement;
+
+    if (!blueprint && requirement) {
+      blueprint = generateWebsiteBlueprint(requirement, [], projectId);
+    }
+    if (!websiteModel && blueprint) {
+      websiteModel = generateWebsiteFromBlueprint(blueprint, projectId);
+    }
+
+    if (websiteModel) {
+      websiteModel.websiteId = projectId;
+      generateCodeProject(websiteModel, blueprint || {}, requirement || {}, projectId);
+      console.log(`[AutoSelfHeal] Successfully emitted code project for ${projectId}`);
+      return true;
+    }
+  } catch (err) {
+    console.error(`[AutoSelfHeal Error] Failed to emit ${projectId}:`, err.message);
+  }
+
+  return false;
+}
+
 // ─── GET /api/website-builder/projects/:id ────────────────────────────────────
 router.get('/projects/:id', async (req, res) => {
   try {
     const project = await WebsiteProject.findOne({ projectId: req.params.id });
     if (!project) return res.status(404).json({ success: false, error: 'Project not found' });
 
-    const versions = await WebsiteVersion.find({ projectId: req.params.id }).sort({ createdAt: -1 });
-    const artifacts = storageService.loadVersionArtifacts(req.params.id, project.activeVersion);
+    await ensureProjectOnDisk(project);
 
-    res.json({ success: true, project, versions, files: artifacts.files || {} });
+    // Sync siteData.js title and identity from disk
+    const projectDir = storageService.getProjectVersionPath(project.projectId, project.activeVersion || 'v1');
+    const siteDataPath = path.join(projectDir, 'src/data/siteData.js');
+    if (fs.existsSync(siteDataPath)) {
+      try {
+        const raw = fs.readFileSync(siteDataPath, 'utf8');
+        const titleMatch = raw.match(/"title":\s*"([^"]+)"/);
+        if (titleMatch && titleMatch[1]) {
+          project.title = titleMatch[1];
+          if (project.website && project.website.websiteIdentity) {
+            project.website.websiteIdentity.title = titleMatch[1];
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Auto-ensure Live Sandbox Runtime is running for this project
+    let runtime = projectSandboxService.getProjectStatus(project.projectId);
+    if (!runtime || runtime.status !== 'RUNNING' || !runtime.url) {
+      if (fs.existsSync(projectDir)) {
+        try {
+          runtime = await projectSandboxService.runProjectInSandbox({
+            projectId: project.projectId,
+            projectDir,
+            forceRebuild: false
+          });
+        } catch (e) {
+          console.warn(`[WB:GET /projects/:id] Auto-start runtime note for ${project.projectId}:`, e.message);
+        }
+      }
+    }
+
+    if (runtime && runtime.status === 'RUNNING') {
+      project.runtime = runtime;
+      if (project.website) {
+        project.website.runtime = runtime;
+      }
+    }
+
+    const versions = await WebsiteVersion.find({ projectId: req.params.id }).sort({ createdAt: -1 });
+    const artifacts = storageService.loadVersionArtifacts(req.params.id, project.activeVersion || 'v1');
+
+    res.json({ success: true, project, runtime, versions, files: artifacts.files || {} });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── GET /api/website-builder/projects/:id/export-zip ─────────────────────────
+router.get('/projects/:id/export-zip', async (req, res) => {
+  try {
+    const project = await WebsiteProject.findOne({ projectId: req.params.id });
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    await ensureProjectOnDisk(project);
+
+    const title = project?.websiteIdentity?.title || project?.title || 'website-app';
+    const version = project?.activeVersion || 'v1';
+
+    storageService.exportProjectZip(req.params.id, version, res, title);
+  } catch (err) {
+    console.error('[ExportZIP Error]', err);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+});
+
+// ─── GET /api/website-builder/projects/:id/files ──────────────────────────────
+router.get('/projects/:id/files', async (req, res) => {
+  try {
+    const project = await WebsiteProject.findOne({ projectId: req.params.id });
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    await ensureProjectOnDisk(project);
+
+    const version = project?.activeVersion || req.query.version || 'v1';
+    const artifacts = storageService.loadVersionArtifacts(req.params.id, version);
+
+    if (!artifacts.success) {
+      return res.status(404).json({ success: false, error: artifacts.error });
+    }
+
+    res.json({ success: true, files: artifacts.files || {} });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── DELETE /api/website-builder/projects/:id ─────────────────────────────────
+router.delete('/projects/:id', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(id);
+    const filter = isMongoId ? { $or: [{ projectId: id }, { _id: id }] } : { projectId: id };
+
+    const project = await WebsiteProject.findOne(filter);
+    const pid = project?.projectId || id;
+
+    // 1. Stop sandbox runtime if running
+    try {
+      await projectSandboxService.stopProject(pid);
+    } catch (e) {
+      // Ignore sandbox stop errors
+    }
+
+    // 2. Delete database records
+    await WebsiteProject.deleteMany(filter);
+    await WebsiteVersion.deleteMany({ projectId: pid });
+
+    // 3. Remove disk storage directory
+    const projectDir = path.join(storageService.baseStorageDir, pid);
+    if (fs.existsSync(projectDir)) {
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+
+    console.log(`[WB:DELETE] Successfully deleted project ${pid}`);
+    res.json({ success: true, message: `Project ${pid} deleted successfully` });
+  } catch (err) {
+    console.error(`[WB:DELETE Error] Failed to delete ${id}:`, err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -175,10 +394,43 @@ router.get('/projects/:id', async (req, res) => {
 const projectSandboxService = require('../modules/websiteBuilder/sandbox/projectSandbox.service');
 
 // ─── GET /api/website-builder/projects/:id/runtime ────────────────────────────
-router.get('/projects/:id/runtime', (req, res) => {
+router.get('/projects/:id/runtime', async (req, res) => {
   const projectId = req.params.id;
-  const runtime = projectSandboxService.getProjectStatus(projectId);
+  let runtime = projectSandboxService.getProjectStatus(projectId);
+  if (!runtime || runtime.status !== 'RUNNING' || !runtime.url) {
+    const projectDir = storageService.getProjectVersionPath(projectId, 'v1');
+    if (fs.existsSync(projectDir)) {
+      try {
+        runtime = await projectSandboxService.runProjectInSandbox({
+          projectId,
+          projectDir,
+          forceRebuild: false
+        });
+      } catch (e) {
+        console.warn(`[WB:Runtime] Auto-start on GET runtime failed for ${projectId}:`, e.message);
+      }
+    }
+  }
   res.json({ success: true, runtime });
+});
+
+// ─── POST /api/website-builder/projects/:id/runtime/start ─────────────────────
+router.post('/projects/:id/runtime/start', async (req, res) => {
+  const projectId = req.params.id;
+  const projectDir = storageService.getProjectVersionPath(projectId, 'v1');
+  if (!fs.existsSync(projectDir)) {
+    return res.status(404).json({ success: false, error: 'Project directory not found on disk' });
+  }
+  try {
+    const runtime = await projectSandboxService.runProjectInSandbox({
+      projectId,
+      projectDir,
+      forceRebuild: req.body.forceRebuild || false
+    });
+    res.json({ success: true, runtime });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ─── POST /api/website-builder/projects/:id/runtime/stop ───────────────────────
@@ -228,6 +480,39 @@ router.post('/chat-edit', async (req, res) => {
       activeBlueprint,
       reqId
     });
+
+    if (editResult && editResult.success) {
+      try {
+        const updateFields = {
+          status: 'MODIFIED',
+          updatedAt: new Date()
+        };
+        if (editResult.updatedTitle) {
+          updateFields.title = editResult.updatedTitle;
+        }
+        if (editResult.updatedWebsite) {
+          updateFields.website = editResult.updatedWebsite;
+        } else {
+          if (editResult.updatedTitle) {
+            updateFields['website.websiteIdentity.title'] = editResult.updatedTitle;
+          }
+          if (editResult.updatedDesignSpec) {
+            updateFields['website.designSpec'] = editResult.updatedDesignSpec;
+          }
+        }
+        if (editResult.runtime) {
+          updateFields.runtime = editResult.runtime;
+        }
+        await WebsiteProject.findOneAndUpdate(
+          { projectId },
+          { $set: updateFields },
+          { returnDocument: 'after' }
+        );
+        console.log(`[WB:${reqId}] Auto-saved updated project '${projectId}' to MongoDB successfully.`);
+      } catch (dbErr) {
+        console.warn(`[WB:${reqId}] DB update note on chat edit:`, dbErr.message);
+      }
+    }
 
     res.json({ success: true, result: editResult, reqId });
   } catch (err) {
