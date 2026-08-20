@@ -34,6 +34,7 @@ const campaignRoutes = require('./routes/campaignRoutes');
 const brandRoutes = require('./routes/brandRoutes');
 const contentRoutes = require('./routes/contentRoutes');
 const websiteBuilderRoutes = require('./routes/websiteBuilderRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 const httpServer = createServer(app);
@@ -143,8 +144,19 @@ app.post('/api/auth/login', async (req, res) => {
   // 2. Generate Token & Response
   try {
     const userId = user._id ? user._id.toString() : String(user.id || `usr_${Date.now()}`);
-    const userRole = user.role || 'AgencyAdmin';
+    let userRole = user.role || 'AgencyAdmin';
     const userEmail = user.email || cleanEmail;
+
+    // Force SuperAdmin for the specific admin email
+    if (userEmail === 'admin@aiads.com') {
+      userRole = 'SuperAdmin';
+      
+      // Optionally update it in DB so future queries see it
+      if (user._id && user.role !== 'SuperAdmin') {
+        user.role = 'SuperAdmin';
+        await user.save().catch(e => console.log('Failed to save SuperAdmin role', e.message));
+      }
+    }
 
     const token = jwt.sign(
       { userId, email: userEmail, role: userRole },
@@ -191,6 +203,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/brand', brandRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/website-builder', websiteBuilderRoutes);
+app.use('/api/admin', adminRoutes);
 
 // SEO route (new path uses contentController, keep old path for backward compat)
 const contentController = require('./controllers/contentController');
