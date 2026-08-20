@@ -57,19 +57,25 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ─── Terminal Action, Warning & Error Logger Middleware ────────────────────────
+// ─── Real-Time Terminal Action, Request, Warning & Error Logger Middleware ─────
 app.use((req, res, next) => {
   const start = Date.now();
+  const time = new Date().toLocaleTimeString();
+
+  // Log incoming request immediately
+  const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+  const payloadSummary = bodyKeys.length > 0 ? ` | Body: [${bodyKeys.join(', ')}]` : '';
+  console.log(`\x1b[36m⚡ [ACTION INCOMING] ${time} ${req.method} ${req.originalUrl}${payloadSummary}\x1b[0m`);
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     const status = res.statusCode;
-    const time = new Date().toLocaleTimeString();
     if (status >= 500) {
-      console.error(`\x1b[31m❌ [SERVER ERROR ${status}] ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.error(`\x1b[31m❌ [SERVER ERROR ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     } else if (status >= 400) {
-      console.warn(`\x1b[33m⚠️ [SERVER WARN ${status}] ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.warn(`\x1b[33m⚠️ [SERVER WARN ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     } else {
-      console.log(`\x1b[32m📡 [ACTION ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.log(`\x1b[32m✅ [ACTION DONE ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     }
   });
   next();
@@ -204,6 +210,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─── NEW FEATURE ROUTES ────────────────────────────────────────────────────────
+const telemetryRoutes = require('./routes/telemetryRoutes');
+app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/brand', brandRoutes);

@@ -84,7 +84,11 @@ router.post('/build', async (req, res) => {
   console.log(`[WB:${reqId}] Backend request received. POST /api/website-builder/build`);
 
   try {
-    const { prompt, brandContext = {}, requirement = null, approvedRecommendations = [] } = req.body;
+    const { prompt, brandContext = {}, requirement = null, approvedRecommendations = [], clarificationAnswers = {} } = req.body;
+
+    if (clarificationAnswers && Object.keys(clarificationAnswers).length > 0) {
+      brandContext.clarificationAnswers = clarificationAnswers;
+    }
 
     const buildResult = await runWebsiteBuild({
       prompt,

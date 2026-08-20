@@ -11,6 +11,7 @@
  */
 
 const crypto = require('crypto');
+const { recordTelemetryEvent } = require('../../../services/telemetryService');
 
 /**
  * Domain & Intent Inference:
@@ -613,14 +614,30 @@ async function generateWebsiteVisualAssetsSequential(requirement = {}, reqId = n
     console.log(`MustContain: [${assetSpec.mustContain.join(', ')}]`);
     console.log(`MustNotContain: [${assetSpec.mustNotContain.join(', ')}]`);
 
+    recordTelemetryEvent({
+      eventType: 'ASSET_PLAN',
+      source: 'AI_PIPELINE',
+      component: 'VisualAssetEngine',
+      action: 'ASSET_PLAN_CREATED',
+      buildId: reqId,
+      metadata: { assetId: assetSpec.assetId, requestedSubject: assetSpec.requestedSubject, domain: assetSpec.domain }
+    });
+
     let approvedUrl = null;
     let finalValidation = null;
 
-    // Step B & C: Generation & Strict Validation Retry Loop
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (attempt > 1) {
         console.log(`\n[ASSET RETRY]`);
         console.log(`Attempt: ${attempt}/${maxRetries}`);
+        recordTelemetryEvent({
+          eventType: 'ASSET_RETRY',
+          source: 'AI_PIPELINE',
+          component: 'VisualAssetEngine',
+          action: 'ASSET_RETRY_ATTEMPT',
+          buildId: reqId,
+          metadata: { assetId: assetSpec.assetId, attempt, requestedSubject: assetSpec.requestedSubject }
+        });
       }
 
       const candidate = generateOrFetchCandidate(assetSpec, attempt, tracker);
@@ -628,6 +645,15 @@ async function generateWebsiteVisualAssetsSequential(requirement = {}, reqId = n
       console.log(`\n[ASSET RESOLUTION]`);
       console.log(`Source: ${candidate.source}`);
       console.log(`Result: ${candidate.candidateUrl.substring(0, 90)}...`);
+
+      recordTelemetryEvent({
+        eventType: 'ASSET_GENERATION',
+        source: 'AI_PIPELINE',
+        component: 'VisualAssetEngine',
+        action: 'ASSET_CANDIDATE_GENERATED',
+        buildId: reqId,
+        metadata: { assetId: assetSpec.assetId, source: candidate.source, attempt }
+      });
 
       // Strict Semantic Validation
       const validation = validateImageAssetStrict(candidate.candidateUrl, assetSpec, tracker);
@@ -638,6 +664,22 @@ async function generateWebsiteVisualAssetsSequential(requirement = {}, reqId = n
       console.log(`MustNotContain: [${assetSpec.mustNotContain.join(', ')}]`);
       console.log(`Result: ${validation.status}`);
       console.log(`Reason: ${validation.reason}`);
+
+      recordTelemetryEvent({
+        eventType: 'ASSET_VALIDATION',
+        source: 'AI_PIPELINE',
+        component: 'VisualAssetEngine',
+        action: `ASSET_VALIDATION_${validation.status}`,
+        buildId: reqId,
+        status: validation.valid ? 'SUCCESS' : 'WARNING',
+        metadata: {
+          assetId: assetSpec.assetId,
+          requestedSubject: assetSpec.requestedSubject,
+          attempt,
+          validationResult: validation.status,
+          reason: validation.reason
+        }
+      });
 
       if (validation.valid) {
         approvedUrl = candidate.candidateUrl;

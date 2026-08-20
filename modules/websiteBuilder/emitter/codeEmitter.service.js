@@ -546,10 +546,13 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .main-content {
   flex: 1;
+  width: 100%;
 }
 
 /* Navbar */
@@ -557,15 +560,17 @@ body {
   position: sticky;
   top: 0;
   z-index: 50;
+  width: 100%;
   background-color: var(--card-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--card-border);
 }
 
 .navbar-container {
-  max-width: 1200px;
+  max-width: 1380px;
+  width: 100%;
   margin: 0 auto;
-  padding: 1rem 1.5rem;
+  padding: 1.1rem 2.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -665,16 +670,21 @@ body {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-/* Section Containers */
+/* Section Containers - Full Width Canvas & Inner Centered Containers */
 .section-block {
-  padding: 4.5rem 1.5rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  position: relative;
+  padding: 5rem 2.5rem;
+  box-sizing: border-box;
 }
 
 .section-header {
-  margin-bottom: 2.5rem;
+  margin-bottom: 3rem;
   text-align: center;
+  max-width: 1380px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .section-title {
@@ -687,15 +697,17 @@ body {
 .section-purpose {
   color: var(--text-muted);
   font-size: 1.05rem;
-  max-width: 600px;
+  max-width: 700px;
   margin: 0 auto;
 }
 
 /* Lovable-Grade Hero Atmospheric Canvas & Components */
 .hero-banner-section, .hero-split-section {
+  width: 100%;
   position: relative;
   overflow: hidden;
-  padding: 5rem 1.5rem 4rem 1.5rem;
+  padding: 6rem 2.5rem 5rem 2.5rem;
+  box-sizing: border-box;
 }
 
 .hero-mesh-bg {
@@ -740,6 +752,10 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 3.5rem;
   align-items: center;
+  max-width: 1380px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .hero-headline {
@@ -806,8 +822,12 @@ body {
 /* Cards & Grids */
 .grid-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.75rem;
+  max-width: 1380px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .card {
@@ -842,14 +862,16 @@ body {
 
 /* Footer */
 .site-footer {
+  width: 100%;
   background-color: rgba(15, 23, 42, 0.95);
   border-top: 1px solid var(--card-border);
-  padding: 3rem 1.5rem;
+  padding: 3.5rem 2.5rem;
   margin-top: 4rem;
 }
 
 .footer-container {
-  max-width: 1200px;
+  max-width: 1380px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
