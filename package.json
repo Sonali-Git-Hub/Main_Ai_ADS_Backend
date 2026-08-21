@@ -26,6 +26,7 @@
     "mongoose": "^9.8.0",
     "multer": "^2.2.0",
     "node-vibrant": "^4.0.4",
+    "nodemailer": "^9.0.5",
     "nodemon": "^3.1.14",
     "officeparser": "^7.5.0",
     "openai": "^7.1.0",

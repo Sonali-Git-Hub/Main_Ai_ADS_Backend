@@ -35,6 +35,8 @@ const brandRoutes = require('./routes/brandRoutes');
 const contentRoutes = require('./routes/contentRoutes');
 const websiteBuilderRoutes = require('./routes/websiteBuilderRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const telemetryRoutes = require('./routes/telemetryRoutes');
+const accountRoutes = require('./routes/accountRoutes');
 
 const app = express();
 const httpServer = createServer(app);
@@ -140,29 +142,32 @@ app.post('/api/auth/login', async (req, res) => {
   // 1. Try DB or Memory Fallback
   try {
     user = await User.findOne({ email: cleanEmail });
-    if (!user) {
-      user = await User.create({ email: cleanEmail, password });
-      console.log(`👤 New user auto-registered in MongoDB: ${cleanEmail}`);
-    } else {
+    if (user) {
       const isMatch = await user.comparePassword(password);
       if (!isMatch) {
-        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+        return res.status(401).json({ success: false, error: 'Invalid password. Please check your credentials.' });
       }
     }
   } catch (error) {
-    console.log('MongoDB Auth Note (Using Memory Store Fallback):', error.message);
-    
-    // Memory Store Fallback
+    console.log('MongoDB Auth Note (Checking Memory Store):', error.message);
+  }
+
+  // If not found in Mongo DB, check Memory Store
+  if (!user) {
     user = memoryUsers.find(u => u.email === cleanEmail);
-    if (!user) {
-      user = { id: `usr_${Date.now()}`, email: cleanEmail, password, role: 'AgencyAdmin' };
-      memoryUsers.push(user);
-      console.log(`👤 New user auto-registered in Memory: ${cleanEmail}`);
-    } else {
+    if (user) {
       if (user.password !== password) {
-        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+        return res.status(401).json({ success: false, error: 'Invalid password. Please check your credentials.' });
       }
     }
+  }
+
+  // If account does NOT exist (or was deleted), reject login!
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      error: 'Account not found. Your account may have been deleted or does not exist. Please click "Create Account" to register.'
+    });
   }
 
   // 2. Generate Token & Response
@@ -199,6 +204,70 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Register Endpoint
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password, confirmPassword } = req.body;
+  if (!email || !password || !confirmPassword) {
+    return res.status(400).json({ success: false, error: 'Email, password, and confirm password are required.' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ success: false, error: 'Passwords do not match. Please check and try again.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+  let user = null;
+
+  try {
+    const existingUser = await User.findOne({ email: cleanEmail });
+    if (existingUser) {
+      return res.status(400).json({ success: false, error: 'An account with this email already exists. Please Sign In.' });
+    }
+    user = await User.create({ email: cleanEmail, password });
+    console.log(`👤 New user registered in MongoDB: ${cleanEmail}`);
+  } catch (error) {
+    console.log('MongoDB Register Note (Using Memory Store Fallback):', error.message);
+    const existing = memoryUsers.find(u => u.email === cleanEmail);
+    if (existing) {
+      return res.status(400).json({ success: false, error: 'An account with this email already exists. Please Sign In.' });
+    }
+    user = { id: `usr_${Date.now()}`, email: cleanEmail, password, role: 'AgencyAdmin' };
+    memoryUsers.push(user);
+    console.log(`👤 New user registered in Memory: ${cleanEmail}`);
+  }
+
+  try {
+    const userId = user._id ? user._id.toString() : String(user.id || `usr_${Date.now()}`);
+    const userRole = user.role || 'AgencyAdmin';
+    const token = jwt.sign(
+      { userId, email: cleanEmail, role: userRole },
+      process.env.JWT_SECRET || 'ai_ads_secret_key_123',
+      { expiresIn: '7d' }
+    );
+
+    // Send Welcome & Account Creation Confirmation Email
+    try {
+      const { sendWelcomeEmail } = require('./services/emailService');
+      sendWelcomeEmail({
+        email: cleanEmail,
+        userName: cleanEmail.split('@')[0]
+      }).catch(err => console.warn('Welcome email error:', err.message));
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      token,
+      user: { id: userId, email: cleanEmail, role: userRole }
+    });
+  } catch (jwtErr) {
+    return res.status(500).json({ success: false, error: `Auth Error: ${jwtErr.message}` });
+  }
+});
+
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
@@ -222,7 +291,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─── NEW FEATURE ROUTES ────────────────────────────────────────────────────────
-const telemetryRoutes = require('./routes/telemetryRoutes');
+app.use('/api/account', accountRoutes);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/campaigns', campaignRoutes);
