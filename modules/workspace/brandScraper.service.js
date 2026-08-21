@@ -280,8 +280,8 @@ async function crawlBrandContext(cleanUrl, $) {
     } catch (e) {}
   }
 
-  // Crawl up to 10 key internal pages
-  const selectedPages = internalPages.slice(0, 10);
+  // Crawl up to 3 key internal pages (optimized for speed)
+  const selectedPages = internalPages.slice(0, 3);
 
   // Concurrently fetch all internal pages
   await Promise.all(selectedPages.map(async (pageUrl) => {
@@ -291,7 +291,7 @@ async function crawlBrandContext(cleanUrl, $) {
       const isPressPage = /press|media|newsroom|brand/i.test(pageUrl);
 
       const response = await axios.get(pageUrl, {
-        timeout: 5000,
+        timeout: 3000,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
       });
       const page$ = cheerio.load(response.data);
@@ -519,29 +519,32 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   }
 
 
-  // STEP 4: Deep Content Crawl & About Page Scrape
+  // STEP 3 & 4: Deep Content Crawl & Hybrid Color Extraction (Run in Parallel)
   let deepContextText = '';
   let aboutPageHeadings = [];
   let aboutPageText = '';
   let contactPageText = '';
   let pressKitText = '';
+  let brandColors = [];
+
+  const crawlPromise = $ ? crawlBrandContext(cleanUrl, $) : Promise.resolve({ internalPages: [] });
+  const colorPromise = extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl);
+
+  const [deepData, colorsResult] = await Promise.all([crawlPromise, colorPromise]);
 
   if ($) {
-    console.log(`📄 [SCRAPER] Step 2: Crawling About Page & Internal Links...`);
-    const deepData = await crawlBrandContext(cleanUrl, $);
-    deepContextText = deepData.deepContextText;
+    deepContextText = deepData.deepContextText || '';
     aboutPageHeadings = deepData.aboutPageHeadings || [];
     aboutPageText = deepData.aboutPageText || '';
     contactPageText = deepData.contactPageText || '';
     pressKitText = deepData.pressKitText || '';
-    if (deepData.internalPages.length > 0) {
+    if (deepData.internalPages && deepData.internalPages.length > 0) {
       crawledSources.push('INTERNAL_ABOUT_PAGES');
       console.log(`📄 [SCRAPER] Discovered & Parsed ${deepData.internalPages.length} Internal Pages (${deepData.internalPages.join(', ')})`);
     }
   }
 
-  // STEP 3: Hybrid Color Extraction (Logo Image Pixels + SVG Vector Fills + Design Tokens)
-  let brandColors = await extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl);
+  brandColors = colorsResult;
   console.log(`🎨 [SCRAPER] Step 3: Extracted Logo & Color Palette (${brandColors.map(c => c.hex).join(', ')})`);
   console.log(`🔍 [SCRAPER] Step 4: JSON-LD Schema & DOM Signals Parsed (Brand: "${schemaName || brandName}", Schema Slogan: "${schemaSlogan || 'N/A'}")`);
 
