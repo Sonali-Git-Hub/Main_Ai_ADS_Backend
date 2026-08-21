@@ -12,14 +12,23 @@ const nodemailer = require('nodemailer');
 function getTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '465', 10);
-  const user = process.env.EMAIL_USER || process.env.SMTP_USER;
-  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
+  const rawUser = process.env.EMAIL_USER || process.env.SMTP_USER || '';
+  const rawPass = process.env.EMAIL_PASS || process.env.SMTP_PASS || '';
+
+  const user = rawUser.trim();
+  const pass = rawPass.trim();
 
   if (user && pass) {
+    if (host.includes('gmail') || user.endsWith('@gmail.com') || user.endsWith('@uwo24.com')) {
+      return nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user, pass }
+      });
+    }
     return nodemailer.createTransport({
       host,
       port,
-      secure: port === 465, // true for 465, false for other ports
+      secure: port === 465,
       auth: { user, pass },
       tls: {
         rejectUnauthorized: false
@@ -193,7 +202,88 @@ async function sendWelcomeEmail({ email, userName = 'Valued User' }) {
   return { success: true, mode: 'CONSOLE_LOG' };
 }
 
+/**
+ * Sends Product Feedback / Support Ticket email to admin@uwo24.com
+ */
+async function sendProductFeedbackEmail({ userEmail, userName = 'User', feedbackText, category = 'Product Feedback' }) {
+  const recipientEmail = 'admin@uwo24.com';
+  const senderEmail = process.env.EMAIL_USER || process.env.SMTP_USER || 'no-reply@aiads.com';
+  const appName = 'AI Ads™ Enterprise Platform';
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #070a11; color: #e2e8f0; margin: 0; padding: 20px; }
+        .card { max-width: 560px; margin: 30px auto; background-color: #0f172a; border: 1px solid #1e293b; border-radius: 24px; padding: 36px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        .badge { display: inline-block; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #818cf8; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 18px; }
+        h2 { color: #ffffff; font-size: 22px; font-weight: 800; margin: 0 0 8px 0; }
+        p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0; }
+        .meta-box { background: #1e293b; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; font-size: 13px; color: #cbd5e1; }
+        .meta-item { margin-bottom: 6px; }
+        .meta-label { font-weight: 700; color: #818cf8; }
+        .content-box { background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 16px; padding: 20px; margin-bottom: 24px; color: #f8fafc; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+        .footer { font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #1e293b; padding-top: 20px; margin-top: 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="badge">💡 Product Feedback</div>
+        <h2>New Feedback Submission</h2>
+        <p>You have received new product feedback from an AI Ads™ user:</p>
+        
+        <div class="meta-box">
+          <div class="meta-item"><span class="meta-label">User Email:</span> ${userEmail}</div>
+          <div class="meta-item"><span class="meta-label">User Name:</span> ${userName}</div>
+          <div class="meta-item"><span class="meta-label">Category:</span> ${category}</div>
+          <div class="meta-item"><span class="meta-label">Timestamp:</span> ${new Date().toLocaleString()}</div>
+        </div>
+
+        <p><strong>Feedback Content:</strong></p>
+        <div class="content-box">${feedbackText}</div>
+        
+        <div class="footer">
+          &copy; ${new Date().getFullYear()} ${appName}. Delivered to admin@uwo24.com
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const transporter = getTransporter();
+
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"${appName} Feedback" <${senderEmail}>`,
+        to: recipientEmail,
+        replyTo: userEmail,
+        subject: `💡 New Product Feedback from ${userEmail} - ${appName}`,
+        text: `New Feedback from ${userName} (${userEmail}):\n\n${feedbackText}`,
+        html: htmlContent
+      });
+
+      console.log(`✉️ [FEEDBACK EMAIL SENT] Delivered to ${recipientEmail} from ${userEmail} (MessageId: ${info.messageId})`);
+      return { success: true, messageId: info.messageId, mode: 'SMTP' };
+    } catch (err) {
+      console.error(`❌ [FEEDBACK EMAIL ERROR] Failed to send to ${recipientEmail}:`, err.message);
+    }
+  }
+
+  console.log(`\n=================== 💡 [SIMULATED EMAIL DELIVERED TO admin@uwo24.com] ===================`);
+  console.log(`Recipient: admin@uwo24.com`);
+  console.log(`From User: ${userName} (${userEmail})`);
+  console.log(`Category:  ${category}`);
+  console.log(`Feedback:  ${feedbackText}`);
+  console.log(`========================================================================================\n`);
+
+  return { success: true, mode: 'DEV_LOG' };
+}
+
 module.exports = {
   sendAccountDeletionOTP,
-  sendWelcomeEmail
+  sendWelcomeEmail,
+  sendProductFeedbackEmail
 };

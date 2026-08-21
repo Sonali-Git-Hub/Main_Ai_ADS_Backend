@@ -196,7 +196,15 @@ app.post('/api/auth/login', async (req, res) => {
     return res.json({
       success: true,
       token,
-      user: { id: userId, email: userEmail, role: userRole }
+      user: {
+        id: userId,
+        email: userEmail,
+        name: user.name || userEmail.split('@')[0],
+        avatar: user.avatar || '',
+        accentColor: user.accentColor || 'indigo',
+        appearance: user.appearance || 'light',
+        role: userRole
+      }
     });
   } catch (jwtErr) {
     console.error('Auth generation error:', jwtErr);
@@ -227,7 +235,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (existingUser) {
       return res.status(400).json({ success: false, error: 'An account with this email already exists. Please Sign In.' });
     }
-    user = await User.create({ email: cleanEmail, password });
+    user = await User.create({ email: cleanEmail, password, name: cleanEmail.split('@')[0], appearance: 'light' });
     console.log(`👤 New user registered in MongoDB: ${cleanEmail}`);
   } catch (error) {
     console.log('MongoDB Register Note (Using Memory Store Fallback):', error.message);
@@ -235,7 +243,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (existing) {
       return res.status(400).json({ success: false, error: 'An account with this email already exists. Please Sign In.' });
     }
-    user = { id: `usr_${Date.now()}`, email: cleanEmail, password, role: 'AgencyAdmin' };
+    user = { id: `usr_${Date.now()}`, email: cleanEmail, password, name: cleanEmail.split('@')[0], avatar: '', accentColor: 'indigo', appearance: 'light', role: 'AgencyAdmin' };
     memoryUsers.push(user);
     console.log(`👤 New user registered in Memory: ${cleanEmail}`);
   }
@@ -261,10 +269,100 @@ app.post('/api/auth/register', async (req, res) => {
     return res.json({
       success: true,
       token,
-      user: { id: userId, email: cleanEmail, role: userRole }
+      user: {
+        id: userId,
+        email: cleanEmail,
+        name: user.name || cleanEmail.split('@')[0],
+        avatar: user.avatar || '',
+        accentColor: user.accentColor || 'indigo',
+        appearance: user.appearance || 'light',
+        role: userRole
+      }
     });
   } catch (jwtErr) {
     return res.status(500).json({ success: false, error: `Auth Error: ${jwtErr.message}` });
+  }
+});
+
+// Profile Update Endpoint (Persists display name, profile picture, accent color, and theme mode in database)
+app.put('/api/auth/profile', async (req, res) => {
+  const { email, name, avatar, accentColor, appearance } = req.body;
+  if (!email) {
+    return res.status(400).json({ success: false, error: 'Email is required' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  try {
+    let updatedUser = await User.findOneAndUpdate(
+      { email: cleanEmail },
+      {
+        $set: {
+          ...(name !== undefined && { name }),
+          ...(avatar !== undefined && { avatar }),
+          ...(accentColor !== undefined && { accentColor }),
+          ...(appearance !== undefined && { appearance })
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      // Memory store fallback
+      let memUser = memoryUsers.find(u => u.email === cleanEmail);
+      if (memUser) {
+        if (name !== undefined) memUser.name = name;
+        if (avatar !== undefined) memUser.avatar = avatar;
+        if (accentColor !== undefined) memUser.accentColor = accentColor;
+        if (appearance !== undefined) memUser.appearance = appearance;
+        updatedUser = memUser;
+      }
+    }
+
+    console.log(`👤 [PROFILE UPDATED] Saved profile for ${cleanEmail}: name="${name || ''}", accent="${accentColor || ''}", appearance="${appearance || ''}"`);
+
+    return res.json({
+      success: true,
+      user: {
+        id: updatedUser ? (updatedUser._id ? updatedUser._id.toString() : String(updatedUser.id || Date.now())) : `usr_${Date.now()}`,
+        email: cleanEmail,
+        name: updatedUser?.name || name || cleanEmail.split('@')[0],
+        avatar: updatedUser?.avatar || avatar || '',
+        accentColor: updatedUser?.accentColor || accentColor || 'indigo',
+        appearance: updatedUser?.appearance || appearance || 'light',
+        role: updatedUser?.role || 'AgencyAdmin'
+      }
+    });
+  } catch (err) {
+    console.error('Error updating user profile:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update profile' });
+  }
+});
+
+// Product Feedback / Support Ticket Endpoint -> Delivers emails to admin@uwo24.com
+app.post('/api/feedback', async (req, res) => {
+  const { email, name, feedback, category } = req.body;
+  if (!feedback || !feedback.trim()) {
+    return res.status(400).json({ success: false, error: 'Feedback message is required.' });
+  }
+
+  const senderEmail = (email || 'anonymous@aiads.com').toLowerCase().trim();
+  const senderName = name || senderEmail.split('@')[0];
+
+  try {
+    const { sendProductFeedbackEmail } = require('./services/emailService');
+    await sendProductFeedbackEmail({
+      userEmail: senderEmail,
+      userName: senderName,
+      feedbackText: feedback.trim(),
+      category: category || 'Product Feedback'
+    });
+
+    console.log(`💡 [FEEDBACK RECEIVED] Email dispatched to admin@uwo24.com from ${senderEmail}`);
+    return res.json({ success: true, message: 'Feedback successfully sent to admin@uwo24.com' });
+  } catch (err) {
+    console.error('Error dispatching feedback email:', err);
+    return res.status(500).json({ success: false, error: 'Failed to deliver feedback email.' });
   }
 });
 

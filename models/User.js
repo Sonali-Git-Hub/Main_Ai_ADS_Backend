@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema(
     providerId: { type: String, unique: true, sparse: true, select: false },
     isVerified: { type: Boolean, default: false },
     avatar: { type: String, default: '' },
+    accentColor: { type: String, default: 'indigo' },
+    appearance: { type: String, default: 'light' },
     role: { type: String, enum: ['user', 'admin', 'AgencyAdmin'], default: 'AgencyAdmin' },
     isBlocked: { type: Boolean, default: false },
 
@@ -24,7 +26,7 @@ const userSchema = new mongoose.Schema(
     settings: {
       emailNotif: { type: Boolean, default: true },
       pushNotif: { type: Boolean, default: false },
-      theme: { type: String, enum: ['light', 'dark', 'system'], default: 'dark' },
+      theme: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
       language: { type: String, default: 'English' },
     },
 
