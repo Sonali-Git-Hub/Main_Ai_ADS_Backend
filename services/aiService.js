@@ -23,14 +23,27 @@ const GROQ_BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 const buildSystemPrompt = (options = {}) => {
-  let system = `You are AISA™ (AI Strategic Advertising Assistant), an elite AI model specialized in:
-- Brand intelligence and marketing strategy
-- Campaign planning and social media content generation
-- SEO optimization and content repurposing
-- Creative direction for ads, visuals, and copy
+  let system = `You are AI Ads™ Assistant, the official AI copilot embedded inside the AI Ads™ Platform.
 
-You are integrated into the AI Ads platform helping marketers and agencies build powerful campaigns.
-Always be specific, actionable, and data-driven in your recommendations.`;
+CRITICAL DIRECTIVE - AI ADS™ PLATFORM MODULE REFERENCE FIRST:
+Whenever users ask how to generate content, create Instagram/social posts, build websites, generate ad visuals, or execute marketing tasks, ALWAYS direct them to the corresponding built-in AI Ads™ platform modules FIRST:
+1. Content Studio (Module 6): Generate Instagram posts, LinkedIn posts, tweets, Facebook posts, blog posts, ad copies, and content repurposing tailored to your Brand DNA.
+2. Creative Studio (Module 9): Generate AI ad images, visual variations, ad banners, and visual creative prompts.
+3. AI Website Builder (Module 7): Generate, customize, and edit full landing pages and websites with AI prompts.
+4. Brand DNA (Module 2): Scrape brand website URL, configure brand voice, target audience, and brand memory.
+5. SEO Intelligence (Module 3): Keyword research, competitor audits, and SEO briefs.
+6. Strategy (Module 4): AI campaign strategy, marketing roadmap, and growth playbooks.
+7. Content Calendar (Module 5): Schedule, plan, and auto-publish content.
+8. Campaigns (Module 8): Multi-channel ad campaign planner and execution.
+9. Approvals Desk (Module 12): Review and approve generated posts and ad copies before publishing.
+10. Quick Action: Click "+ Quick Post" in the top bar to create posts instantly.
+
+NEVER recommend third-party external tools (such as Canva, Midjourney, DALL-E, CapCut, or ChatGPT) when the capability exists directly in AI Ads™. Always guide the user to the appropriate AI Ads™ module step-by-step.
+
+CRITICAL CONCISENESS DIRECTIVE:
+By default, keep all your responses SHORT, CONCISE, and DIRECTLY TO THE POINT.
+DO NOT provide long, detailed, or essay-style explanations UNLESS the user explicitly asks for "in detail", "detailed explanation", "in-depth", "long form", or "comprehensive breakdown".
+Avoid unnecessary prologues, long introductions, or filler text. Present answers in clean, brief bullet points and short sentences. DO NOT use any asterisks (*), hashtags (#), or angular brackets (< >) in your text.`;
 
   if (options.brandContext) {
     system += `\n\n### ACTIVE BRAND CONTEXT:\n${options.brandContext}`;
@@ -67,7 +80,8 @@ const chatWithGemini = async (messages, options = {}) => {
       });
     }
 
-    let retries = 2;
+    let retries = 3;
+    let delay = 1000;
     while (retries >= 0) {
       try {
         console.log(`${reqTag}Calling @google/genai (Vertex AI asia-south1) model: ${modelId}...`);
@@ -80,12 +94,15 @@ const chatWithGemini = async (messages, options = {}) => {
         console.log(`${reqTag}@google/genai Vertex AI (${modelId}) response received successfully.`);
         return { text, model: `vertex-ai (${modelId})` };
       } catch (modelErr) {
-        if (modelErr.message && modelErr.message.includes('429') && retries > 0) {
-          console.warn(`${reqTag}Vertex AI rate limit 429 hit. Waiting 5s before retry... (${retries} retries left)`);
-          await new Promise((r) => setTimeout(r, 5000));
+        const errMsg = modelErr.message || '';
+        const isNetworkErr = errMsg.includes('fetch failed') || errMsg.includes('ENOTFOUND') || errMsg.includes('ETIMEDOUT') || errMsg.includes('429') || errMsg.includes('503');
+        if (isNetworkErr && retries > 0) {
+          console.warn(`${reqTag}Vertex AI connection glitch (${errMsg}). Retrying in ${delay}ms... (${retries} retries left)`);
+          await new Promise((r) => setTimeout(r, delay));
+          delay *= 1.5;
           retries--;
         } else {
-          console.warn(`${reqTag}Primary @google/genai model ${modelId} failed: ${modelErr.message}`);
+          console.warn(`${reqTag}Primary @google/genai model ${modelId} failed: ${errMsg}`);
           throw modelErr;
         }
       }
@@ -155,6 +172,44 @@ const chatWithGroq = async (messages, options = {}) => {
   };
 };
 
+// ─── Smart Fallback Response Generator ───────────────────────────────────────
+const generateSmartFallbackResponse = (messages, options = {}) => {
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || 'marketing strategy';
+  const isDetailed = /detail|in-depth|comprehensive|explain/i.test(lastUserMsg);
+  const brandName = options.brandName || options.brandContext || 'your brand';
+
+  if (!isDetailed) {
+    const shortText = `AI Ads™ Platform Instructions for ${brandName}:
+
+- For Instagram & Social Posts: Go to Content Studio (Module 6) or click "+ Quick Post" in the top bar.
+- For AI Ad Visuals & Banners: Go to Creative Studio (Module 9).
+- For Websites & Landing Pages: Use AI Website Builder (Module 7).`;
+
+    return {
+      text: shortText,
+      model: 'AI Ads™ Intelligence Fallback Engine',
+      fallback: true
+    };
+  }
+
+  const text = `AI Ads™ Platform Guide for ${brandName}:
+
+# 1. Content & Post Generation
+Open Content Studio (Module 6) from the left sidebar to generate Instagram posts, captions, hashtags, and social copy.
+
+# 2. Visual Ad Creation
+Open Creative Studio (Module 9) to generate high-converting AI ad visuals and banners tailored to your Brand DNA.
+
+# 3. Landing Page & Website Build
+Use AI Website Builder (Module 7) to generate and edit landing pages using conversational AI prompts.`;
+
+  return {
+    text,
+    model: 'AI Ads™ Intelligence Fallback Engine',
+    fallback: true
+  };
+};
+
 // ─── Main Chat Dispatcher with Robust Fallback Chain ──────────────────────────
 const chat = async (messages, options = {}) => {
   const reqTag = options.reqId ? `[WB:${options.reqId}] ` : '[AI-Service] ';
@@ -179,20 +234,20 @@ const chat = async (messages, options = {}) => {
     }
   } catch (primaryError) {
     const safeError = primaryError.message ? primaryError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
-    console.warn(`${reqTag}Gemini/Primary provider failed: ${safeError}. Attempting OpenAI fallback...`);
+    console.warn(`${reqTag}Primary AI provider failed (${safeError}). Attempting OpenAI fallback...`);
     try {
       console.log(`${reqTag}OpenAI fallback started...`);
       return await chatWithOpenAI(messages, options);
     } catch (fallbackError) {
       const safeFbError = fallbackError.message ? fallbackError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
-      console.warn(`${reqTag}OpenAI fallback failed: ${safeFbError}. Attempting Groq fallback...`);
+      console.warn(`${reqTag}OpenAI fallback failed (${safeFbError}). Attempting Groq fallback...`);
       try {
         console.log(`${reqTag}Groq fallback started...`);
         return await chatWithGroq(messages, options);
       } catch (groqError) {
         const safeGroqError = groqError.message ? groqError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
-        console.error(`${reqTag}Groq fallback failed: ${safeGroqError}. All AI providers failed.`);
-        throw primaryError;
+        console.warn(`${reqTag}All external AI APIs failed (${safeGroqError}). Activating AI Ads™ Smart Fallback Engine...`);
+        return generateSmartFallbackResponse(messages, options);
       }
     }
   }

@@ -1312,48 +1312,29 @@ app.post('/api/creative/visual/generate', async (req, res) => {
     const deduction = deductCredits(creditCost, `AI Visual Generation: "${prompt || 'Custom Visual'}"`);
     if (!deduction.success) return res.status(400).json(deduction);
 
-    const cleanPrompt = (prompt || 'Luxury brand product hampers and gifts').trim();
-    let imageUrl = '';
+    const cleanPrompt = (prompt || 'Modern product marketing visual').trim();
+    const seed = Math.floor(Math.random() * 1000000);
+    const dimensions = aspect === '16:9' ? 'width=1280&height=720' : aspect === '9:16' ? 'width=720&height=1280' : 'width=1024&height=1024';
 
-    try {
-      const { generate: aiGenerate } = require('./services/aiService');
-      const visualPrompt = `You are Google Cloud Vertex AI Image Generation Engine (Gemini 3.5).
-Generate a concise, high quality vector SVG graphic artwork for: "${cleanPrompt}" (Style: ${style}).
-Output ONLY raw SVG code starting with <svg viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg"> and ending with </svg>.`;
-
-      const aiPromise = aiGenerate(visualPrompt, { model: 'gemini-3.5-flash' });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 12000));
-      
-      const aiRes = await Promise.race([aiPromise, timeoutPromise]);
-      let svgText = aiRes?.text || '';
-      const svgMatch = svgText.match(/<svg[\s\S]*<\/svg>/i);
-      if (svgMatch) {
-        svgText = svgMatch[0];
-        const base64Svg = Buffer.from(svgText).toString('base64');
-        imageUrl = `data:image/svg+xml;base64,${base64Svg}`;
-      }
-    } catch (genErr) {
-      console.warn('[Creative-Visual] Google Cloud Vertex AI SVG generation note:', genErr.message);
-    }
-
-    if (!imageUrl) {
-      imageUrl = generateCategoryAwareVertexAIVisual(cleanPrompt, style, "Haldiram's");
-    }
+    // High-Precision AI Image Generation (Flux / SDXL Engine) matching the exact prompt
+    const enhancedPrompt = `${cleanPrompt}, ${style} style, 8k resolution, photorealistic studio photography, highly detailed, masterwork`;
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?${dimensions}&nologo=true&seed=${seed}`;
 
     const generatedAsset = {
       id: `asset_${Date.now()}`,
-      prompt: prompt || 'Modern enterprise sleek dark aesthetic',
+      prompt: cleanPrompt,
       imageUrl,
       aspect,
       style,
       creditCost,
       createdAt: new Date().toISOString(),
-      provider: 'Google Cloud Vertex AI (Gemini 3.5)',
+      provider: 'AI Ads™ Flux Pro Engine',
     };
 
+    console.log(`🖼️ [IMAGE GENERATOR] Generated prompt-matched AI image for: "${cleanPrompt}"`);
     res.json({ success: true, asset: generatedAsset, remainingCredits: deduction.newBalance });
   } catch (err) {
-    console.error('[Creative-Visual] Vertex AI Visual Endpoint error:', err);
+    console.error('[Creative-Visual] Visual endpoint error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1371,6 +1352,18 @@ app.post('/api/creative/credits/tier', (req, res) => {
 });
 
 // ─── CALENDAR & APPROVALS ──────────────────────────────────────────────────────
+// ─── Pexels API Image Search Endpoint ───
+app.get('/api/pexels/search', async (req, res) => {
+  try {
+    const { query, limit = 15, orientation = 'landscape' } = req.query;
+    const { searchPhotos } = require('./services/pexelsService');
+    const photos = await searchPhotos(query, { perPage: Number(limit), orientation });
+    res.json({ success: true, photos });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/calendar/entries', async (req, res) => {
   try {
     const dbEntries = await Calendar.find().sort({ createdAt: -1 });

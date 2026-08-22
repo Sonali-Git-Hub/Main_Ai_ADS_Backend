@@ -188,6 +188,10 @@ Return a JSON object with these exact keys:
 exports.getBrandProfile = async (req, res) => {
   try {
     const { workspaceId } = req.params;
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ success: true, profile: null, memoryMode: true });
+    }
+
     let profile = await BrandProfile.findOne({ workspaceId });
     if (!profile && mongoose.Types.ObjectId.isValid(workspaceId)) {
       profile = await BrandProfile.findById(workspaceId);
@@ -195,7 +199,8 @@ exports.getBrandProfile = async (req, res) => {
     if (!profile) return res.json({ success: true, profile: null });
     res.json({ success: true, profile });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.warn('[BrandController] DB Profile fetch fallback:', err.message);
+    res.json({ success: true, profile: null, fallback: true });
   }
 };
 

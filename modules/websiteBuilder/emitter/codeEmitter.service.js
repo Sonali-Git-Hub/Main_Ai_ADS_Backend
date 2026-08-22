@@ -1216,8 +1216,9 @@ export default function ItemCatalogGrid({ section, paymentSpec }) {
               >
                 <div style={{ position: 'relative', width: '100%', height: '200px', overflow: 'hidden' }}>
                   <img
-                    src={item.imageUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80'}
+                    src={item.imageUrl || 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80'}
                     alt={item.name}
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80"; }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
                   />
                   {item.badge && (

@@ -12,20 +12,24 @@ try {
 
 // Mongoose connection helper with DNS SRV fix
 const connectDB = async () => {
-  mongoose.set('bufferCommands', true);
+  mongoose.set('bufferCommands', false);
   const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ai_ads_db';
   const localFallbackUri = 'mongodb://127.0.0.1:27017/ai_ads_db';
 
   try {
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 3000,
+      connectTimeoutMS: 3000,
       family: 4
     });
     console.log(`🍃 MongoDB Atlas Cloud Connected: ${conn.connection.host} / DB: ${conn.connection.name}`);
   } catch (error) {
     console.log(`⚠️ Atlas Cloud IP Restricted (${error.message}). Attempting local DB fallback...`);
     try {
-      const connLocal = await mongoose.connect(localFallbackUri);
+      const connLocal = await mongoose.connect(localFallbackUri, {
+        serverSelectionTimeoutMS: 2000,
+        connectTimeoutMS: 2000
+      });
       console.log(`🍃 Local MongoDB Connected: ${connLocal.connection.host} / DB: ${connLocal.connection.name}`);
     } catch (localErr) {
       console.log('MongoDB Note: Running with in-memory persistence store.');

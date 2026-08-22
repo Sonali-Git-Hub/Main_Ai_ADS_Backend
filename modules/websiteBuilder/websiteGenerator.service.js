@@ -161,6 +161,8 @@ function generateWebsiteFromBlueprint(blueprint, reqId = null) {
 
 const { resolveDomainImagePool, resolveItemImage } = require('./services/imageResolver.service');
 
+const isHttpUrl = (url) => typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/'));
+
 /**
  * Builds deterministic section objects from component specifications
  */
@@ -268,7 +270,7 @@ function buildSectionFromComponentSpec({
         subheadline: cs?.subheadline || `${businessType} — delivering exceptional quality and value.`,
         primaryCTA: ctaRequirements.primaryCTA || (isMediaHero ? 'Watch Free Now' : 'Get Started'),
         secondaryCTA: ctaRequirements.secondaryCTA || (isMediaHero ? 'Browse All Genres' : 'Learn More'),
-        imageUrl: comp.imageUrl || cs?.imageUrl || resolveItemImage({
+        imageUrl: (isHttpUrl(comp.imageUrl) ? comp.imageUrl : (isHttpUrl(cs?.imageUrl) ? cs.imageUrl : resolveItemImage({
           itemName: `${businessName} ${cs?.headline || ''}`,
           itemCategory: 'Hero',
           imageSearchQuery: cs?.imageSearchQuery,
@@ -278,7 +280,7 @@ function buildSectionFromComponentSpec({
           domainImages,
           usedImageUrls,
           visualSpec: cs?.visualSpec
-        })
+        })))
       };
 
     case 'RestaurantMenuCard':
@@ -414,7 +416,7 @@ function buildSectionFromComponentSpec({
               title: s.title || `${businessName} Service ${idx + 1}`,
               description: s.description || 'Specialist service tailored to your requirements.',
               price: sanitizePriceDisplay(s.priceDisplay || s.price, pricingStrategy, 'Contact for pricing'),
-              imageUrl: s.imageUrl || resolveItemImage({
+              imageUrl: isHttpUrl(s.imageUrl) ? s.imageUrl : resolveItemImage({
                 itemName: s.title,
                 itemCategory: 'Services',
                 imageSearchQuery: s.imageSearchQuery,
@@ -477,7 +479,7 @@ function buildSectionFromComponentSpec({
                 year: item.year || '2025'
               }
             : {}),
-          imageUrl: item.imageUrl || resolveItemImage({
+          imageUrl: isHttpUrl(item.imageUrl) ? item.imageUrl : resolveItemImage({
             itemName: item.name,
             itemCategory: item.category,
             imageSearchQuery: item.imageSearchQuery,

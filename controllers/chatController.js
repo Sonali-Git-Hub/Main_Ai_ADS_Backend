@@ -1,36 +1,63 @@
 /**
  * Chat Controller
  * Handles AI chat sessions — create, list, send message, delete.
+ * Includes in-memory fail-safe persistence store for offline DB fallback.
  */
+const mongoose = require('mongoose');
 const ChatSession = require('../models/ChatSession');
 const { chat } = require('../services/aiService');
 const { v4: uuidv4 } = require('uuid');
+
+const memoryChatSessions = new Map();
+
+// Helper to check DB readiness
+const isDbConnected = () => mongoose.connection.readyState === 1;
 
 // ─── GET /api/chat/sessions ───────────────────────────────────────────────────
 exports.listSessions = async (req, res) => {
   try {
     const { workspaceId, limit = 30 } = req.query;
-    const filter = {};
-    if (workspaceId) filter.workspaceId = workspaceId;
+    if (isDbConnected()) {
+      const filter = {};
+      if (workspaceId) filter.workspaceId = workspaceId;
 
-    const sessions = await ChatSession.find(filter)
-      .select('sessionId title lastModified detectedMode model createdAt')
-      .sort({ lastModified: -1 })
-      .limit(Number(limit));
+      const sessions = await ChatSession.find(filter)
+        .select('sessionId title lastModified detectedMode model createdAt')
+        .sort({ lastModified: -1 })
+        .limit(Number(limit));
+
+      return res.json({ success: true, sessions });
+    }
+
+    // In-memory fallback
+    const sessions = Array.from(memoryChatSessions.values())
+      .filter(s => !workspaceId || s.workspaceId === workspaceId)
+      .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
+      .slice(0, Number(limit));
 
     res.json({ success: true, sessions });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    const sessions = Array.from(memoryChatSessions.values()).slice(0, 30);
+    res.json({ success: true, sessions, fallback: true });
   }
 };
 
 // ─── GET /api/chat/sessions/:sessionId ───────────────────────────────────────
 exports.getSession = async (req, res) => {
+  const { sessionId } = req.params;
   try {
-    const session = await ChatSession.findOne({ sessionId: req.params.sessionId });
-    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
-    res.json({ success: true, session });
+    if (isDbConnected()) {
+      const session = await ChatSession.findOne({ sessionId });
+      if (session) return res.json({ success: true, session });
+    }
+
+    const memSession = memoryChatSessions.get(sessionId);
+    if (memSession) return res.json({ success: true, session: memSession });
+
+    return res.status(404).json({ success: false, error: 'Session not found' });
   } catch (err) {
+    const memSession = memoryChatSessions.get(sessionId);
+    if (memSession) return res.json({ success: true, session: memSession });
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -54,16 +81,28 @@ exports.sendMessage = async (req, res) => {
 
     const sessionId = existingSessionId || uuidv4();
 
-    // Find or create session
-    let session = await ChatSession.findOne({ sessionId });
+    let session = null;
+    if (isDbConnected()) {
+      try {
+        session = await ChatSession.findOne({ sessionId });
+      } catch (dbErr) {
+        console.warn('[ChatController] DB query failed, using in-memory session store:', dbErr.message);
+      }
+    }
+
+    if (!session && memoryChatSessions.has(sessionId)) {
+      session = memoryChatSessions.get(sessionId);
+    }
+
     if (!session) {
-      session = new ChatSession({
+      session = {
         sessionId,
         workspaceId: workspaceId || null,
         title: message.slice(0, 60),
         model,
         messages: [],
-      });
+        lastModified: Date.now()
+      };
     }
 
     // Add user message
@@ -101,18 +140,21 @@ exports.sendMessage = async (req, res) => {
     session.lastModified = Date.now();
     session.model = model;
 
-    // Auto-generate title from first message
-    if (session.messages.length === 2 && session.title === message.slice(0, 60)) {
-      try {
-        const titleResult = await chat(
-          [{ role: 'user', content: `Generate a short 4-6 word title for this conversation starting with: "${message.slice(0, 100)}". Return ONLY the title, no quotes.` }],
-          { model: 'gemini', temperature: 0.5 }
-        );
-        session.title = titleResult.text.trim().slice(0, 60);
-      } catch {}
-    }
+    // Save in memory cache always
+    memoryChatSessions.set(sessionId, session);
 
-    await session.save();
+    // Save to DB if connected
+    if (isDbConnected()) {
+      try {
+        await ChatSession.findOneAndUpdate(
+          { sessionId },
+          { $set: session },
+          { upsert: true, new: true }
+        );
+      } catch (dbSaveErr) {
+        console.warn('[ChatController] DB session save skipped:', dbSaveErr.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -130,26 +172,37 @@ exports.sendMessage = async (req, res) => {
 
 // ─── DELETE /api/chat/sessions/:sessionId ─────────────────────────────────────
 exports.deleteSession = async (req, res) => {
-  try {
-    await ChatSession.findOneAndDelete({ sessionId: req.params.sessionId });
-    res.json({ success: true, message: 'Session deleted' });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  const { sessionId } = req.params;
+  memoryChatSessions.delete(sessionId);
+  if (isDbConnected()) {
+    try {
+      await ChatSession.findOneAndDelete({ sessionId });
+    } catch (e) {}
   }
+  res.json({ success: true, message: 'Session deleted' });
 };
 
 // ─── PATCH /api/chat/sessions/:sessionId/title ────────────────────────────────
 exports.renameSession = async (req, res) => {
-  try {
-    const { title } = req.body;
-    const session = await ChatSession.findOneAndUpdate(
-      { sessionId: req.params.sessionId },
-      { title },
-      { returnDocument: 'after' }
-    );
-    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
-    res.json({ success: true, session });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  const { sessionId } = req.params;
+  const { title } = req.body;
+
+  let memSession = memoryChatSessions.get(sessionId);
+  if (memSession) {
+    memSession.title = title;
   }
+
+  if (isDbConnected()) {
+    try {
+      const session = await ChatSession.findOneAndUpdate(
+        { sessionId },
+        { title },
+        { returnDocument: 'after' }
+      );
+      if (session) return res.json({ success: true, session });
+    } catch (e) {}
+  }
+
+  if (memSession) return res.json({ success: true, session: memSession });
+  res.status(404).json({ success: false, error: 'Session not found' });
 };

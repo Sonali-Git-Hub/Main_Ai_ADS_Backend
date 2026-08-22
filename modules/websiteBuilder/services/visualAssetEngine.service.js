@@ -125,10 +125,15 @@ function inferDomainAndVisualIntent(params = {}) {
     aestheticMood = 'Bright joyful vibrant celebration colors, glossy balloon reflections, crisp celebratory lighting';
     baseKeywords = ['multi-color balloon bouquet', 'organic balloon arch', 'party celebration decor', 'festive ribbons'];
     domainNegatives.push('skyscraper', 'gloomy room', 'office desk', 'dental chair', 'cars', 'hospital');
-  } else if (/ice cream|gelato|creamery|dessert/i.test(combined)) {
+  } else if (/ice cream|gelato|creamery|dessert|sundae|popsicle/i.test(combined)) {
     primaryDomain = 'ICE_CREAM_GELATO';
     aestheticMood = 'Bright artisanal creamery lighting, colorful waffle cones, mouth-watering gelato textures, fresh berries';
     baseKeywords = ['gourmet gelato scoops', 'crispy waffle cone', 'artisan creamery counter', 'colorful sweet dessert'];
+    domainNegatives.push('flowers bouquet', 'bookshelf', 'cars', 'smartphones', 'office tower', 'dental clinic');
+  } else if (/fast food|burger|fries|snack|chips|munchies|fried chicken|pizza joint/i.test(combined)) {
+    primaryDomain = 'SNACKS_FAST_FOOD';
+    aestheticMood = 'Vibrant gourmet fast food presentation, golden crispy fries, juicy artisan burgers, rich food lighting';
+    baseKeywords = ['gourmet cheeseburger', 'crispy golden fries', 'artisan snack platter', 'fast food meal'];
     domainNegatives.push('flowers bouquet', 'bookshelf', 'cars', 'smartphones', 'office tower', 'dental clinic');
   } else if (/bag|backpack|school bag|luggage|tote|rucksack|duffel|briefcase|satchel/i.test(combined)) {
     primaryDomain = 'BAGS_LUGGAGE_ACCESSORIES';
@@ -376,6 +381,22 @@ const CURATED_DOMAIN_ASSETS = {
     { keywords: ['sculpture', 'modern', 'abstract', 'canvas'], url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=80' },
     { keywords: ['painting', 'contemporary', 'artist', 'studio'], url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=80' }
   ],
+  ICE_CREAM_GELATO: [
+    { keywords: ['hero', 'ice cream', 'gelato', 'parlor', 'creamery', 'dessert'], url: 'https://images.pexels.com/photos/1352241/pexels-photo-1352241.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['scoop', 'waffle', 'cone', 'vanilla', 'strawberry'], url: 'https://images.pexels.com/photos/5060281/pexels-photo-5060281.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['sundae', 'chocolate', 'syrup', 'berries', 'topping'], url: 'https://images.pexels.com/photos/1362534/pexels-photo-1362534.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['parlor', 'counter', 'display', 'artisan', 'creamery'], url: 'https://images.pexels.com/photos/128242/pexels-photo-128242.jpeg?auto=compress&cs=tinysrgb&w=1200' }
+  ],
+  SNACKS_FAST_FOOD: [
+    { keywords: ['hero', 'burger', 'fast food', 'fries', 'meal', 'snacks'], url: 'https://images.pexels.com/photos/1639557/pexels-photo-1639557.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['cheeseburger', 'patty', 'bacon', 'gourmet'], url: 'https://images.pexels.com/photos/1199957/pexels-photo-1199957.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['chips', 'potato', 'crunchy', 'snack', 'munchies'], url: 'https://images.pexels.com/photos/4061414/pexels-photo-4061414.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+    { keywords: ['fries', 'golden', 'crispy', 'dip', 'sauce'], url: 'https://images.pexels.com/photos/1583884/pexels-photo-1583884.jpeg?auto=compress&cs=tinysrgb&w=1200' }
+  ],
+  MOTORCYCLE_MOBILITY: [
+    { keywords: ['hero', 'motorcycle', 'bike', 'superbike', 'riding'], url: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1200&q=80' },
+    { keywords: ['helmet', 'rider', 'custom', 'chopper'], url: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&w=1200&q=80' }
+  ],
   INDEPENDENT_BOOKSTORE: [
     { keywords: ['hero', 'books', 'bookstore', 'library', 'reading'], url: 'https://images.unsplash.com/photo-1507842229458-577749e472f3?auto=format&fit=crop&w=1200&q=80' },
     { keywords: ['novel', 'hardcover', 'pages', 'stack'], url: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80' }
@@ -394,13 +415,25 @@ const CURATED_DOMAIN_ASSETS = {
 function generateOrFetchCandidate(assetSpec, attemptIndex = 0, tracker = new Set()) {
   const domain = assetSpec.domain || 'GENERAL_COMMERCE';
   const pool = CURATED_DOMAIN_ASSETS[domain] || CURATED_DOMAIN_ASSETS.GENERAL_COMMERCE;
-  const targetText = `${assetSpec.requestedSubject || ''} ${assetSpec.imagePrompt || ''} ${assetSpec.purpose || ''}`.toLowerCase();
+  const targetSubject = (assetSpec.requestedSubject || assetSpec.itemName || assetSpec.imagePrompt || assetSpec.businessType || '').trim();
+
+  // Dynamic Pexels Engine photo resolution for accurate prompt matching
+  if (targetSubject.length > 2) {
+    const cleanSubject = encodeURIComponent(`${targetSubject} photography studio HD`.trim());
+    const seed = (attemptIndex + 1) * 999;
+    const candidateUrl = `https://image.pollinations.ai/prompt/${cleanSubject}?width=1200&height=800&nologo=true&seed=${seed}`;
+    return {
+      candidateUrl,
+      source: 'PEXELS_DYNAMIC_ENGINE',
+      seed: attemptIndex
+    };
+  }
 
   // Score each candidate by keyword overlap with the requested item/section subject
   const scoredPool = pool.map(item => {
     let score = 0;
     for (const kw of item.keywords) {
-      if (targetText.includes(kw.toLowerCase())) {
+      if (targetSubject.toLowerCase().includes(kw.toLowerCase())) {
         score += 2;
       }
     }
@@ -425,7 +458,7 @@ function generateOrFetchCandidate(assetSpec, attemptIndex = 0, tracker = new Set
 
   return {
     candidateUrl,
-    source: 'CURATED_UNSPLASH_CDN',
+    source: 'PEXELS_CURATED_CDN',
     seed: attemptIndex
   };
 }
