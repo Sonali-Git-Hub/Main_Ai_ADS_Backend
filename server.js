@@ -84,6 +84,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── API Router Mounting ───────────────────────────────────────────────────────
+app.use('/api/chat', chatRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/brand', brandRoutes);
+app.use('/api/content', contentRoutes);
+app.use('/api/website-builder', websiteBuilderRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/account', accountRoutes);
+
 // Memory Store Fallback
 let memoryUsers = [];
 let memoryWorkspaces = [
