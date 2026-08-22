@@ -182,7 +182,7 @@ exports.generateEmailCopy = async (req, res) => {
       model = 'gemini',
     } = req.body;
 
-    if (!subject) return res.status(400).json({ success: false, error: 'subject is required' });
+    const effectiveSubject = (subject && subject.trim()) || (purpose ? `${purpose.replace(/_/g, ' ').toUpperCase()} Announcement` : 'Exclusive Brand Update');
 
     const brandContext = await getBrandContext(workspaceId);
 
@@ -192,7 +192,7 @@ exports.generateEmailCopy = async (req, res) => {
 
     const prompt = `Write a compelling ${purpose} email with the following specifications:
 
-Subject / Topic: "${subject}"
+Subject / Topic: "${effectiveSubject}"
 Purpose: ${purpose}
 Recipients / Audience: ${recipientType}
 Tone: ${tone}
@@ -216,10 +216,35 @@ Return JSON:
   "ps": "optional P.S. line for urgency or bonus offer"
 }`;
 
-    const result = await generateJSON(prompt, { model, temperature: 0.8 });
-    if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
+    let emailData = null;
+    try {
+      const result = await generateJSON(prompt, { model, temperature: 0.8 });
+      if (result) {
+        emailData = result?.data || result;
+      }
+    } catch (aiErr) {
+      console.warn('AI provider failed for email generation, using smart fallback template:', aiErr.message);
+    }
 
-    const emailData = result?.data || result;
+    if (!emailData || !emailData.subject) {
+      const companyStr = senderCompany || 'AI Ads Platform';
+      const keyPointsList = keyPoints 
+        ? keyPoints.split(',').map(p => `• ${p.trim()}`).join('\n')
+        : `• Exclusive updates & feature enhancements\n• Tailored strategy insights for ${recipientType}\n• Seamless integration with your marketing workflow`;
+
+      emailData = {
+        subject: effectiveSubject,
+        preheader: `Important update regarding ${effectiveSubject}`,
+        headline: `Special Announcement: ${effectiveSubject}`,
+        body: `Hi ${recipientType || 'there'},\n\nWe are excited to share an important update regarding ${effectiveSubject}.\n\n${context ? context + '\n\n' : ''}Key Highlights:\n${keyPointsList}\n\nOur team at ${companyStr} is dedicated to providing you with the highest quality experience and results.\n\n${cta ? 'Take Action: ' + cta : 'Click below to explore more details.'}\n\nBest regards,\n${senderName || 'The Marketing Team'}${senderDesignation ? '\n' + senderDesignation : ''}${senderCompany ? '\n' + senderCompany : ''}`,
+        cta: cta || 'Explore Now',
+        ctaUrl: '#',
+        openRateTip: 'Pro Tip: Personalize subject lines with the subscriber\'s name to increase open rates by up to 26%.',
+        closingLine: 'Warm regards,',
+        ps: `P.S. Have questions? Reply directly to this email and our team at ${companyStr} will be happy to help!`
+      };
+    }
+
     res.json({ success: true, email: emailData });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
