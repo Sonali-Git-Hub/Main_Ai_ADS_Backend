@@ -81,6 +81,49 @@ exports.sendMessage = async (req, res) => {
 
     const sessionId = existingSessionId || uuidv4();
 
+    // Resolve user credentials from JWT token, request body, or workspace context
+    let resolvedEmail = req.user?.email || req.body.userEmail || null;
+    let resolvedName = req.user?.name || req.body.userName || null;
+    let resolvedUserId = req.user?._id || req.user?.id || null;
+
+    if (!resolvedEmail && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ai_ads_secret_key_123');
+        if (decoded) {
+          resolvedUserId = decoded.userId || decoded.id || resolvedUserId;
+          resolvedEmail = decoded.email || resolvedEmail;
+          resolvedName = decoded.name || resolvedName;
+        }
+      } catch (e) {}
+    }
+
+    if (!resolvedEmail && workspaceId && isDbConnected()) {
+      try {
+        const Workspace = require('../models/Workspace');
+        const ws = await Workspace.findById(workspaceId);
+        if (ws && ws.userEmail) {
+          resolvedEmail = ws.userEmail;
+        }
+      } catch (e) {}
+    }
+
+    if (resolvedEmail && !resolvedName && isDbConnected()) {
+      try {
+        const User = require('../models/User');
+        const u = await User.findOne({ email: resolvedEmail.toLowerCase() });
+        if (u) {
+          resolvedName = u.name || u.email.split('@')[0];
+          resolvedUserId = resolvedUserId || u._id.toString();
+        }
+      } catch (e) {}
+    }
+
+    if (!resolvedName && resolvedEmail) {
+      resolvedName = resolvedEmail.split('@')[0];
+    }
+
     let session = null;
     if (isDbConnected()) {
       try {
@@ -98,11 +141,19 @@ exports.sendMessage = async (req, res) => {
       session = {
         sessionId,
         workspaceId: workspaceId || null,
+        userEmail: resolvedEmail,
+        userName: resolvedName,
+        userId: resolvedUserId,
         title: message.slice(0, 60),
         model,
         messages: [],
         lastModified: Date.now()
       };
+    } else {
+      if (resolvedEmail) session.userEmail = resolvedEmail;
+      if (resolvedName) session.userName = resolvedName;
+      if (resolvedUserId) session.userId = resolvedUserId;
+      session.lastModified = Date.now();
     }
 
     // Add user message
