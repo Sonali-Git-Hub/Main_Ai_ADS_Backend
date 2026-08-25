@@ -173,8 +173,23 @@ const chatWithGroq = async (messages, options = {}) => {
 };
 
 // ─── Smart Fallback Response Generator ───────────────────────────────────────
+const resolveBrandName = (options = {}) => {
+  if (typeof options.brandName === 'string' && options.brandName.trim()) {
+    return options.brandName.trim();
+  }
+  if (typeof options.brandContext === 'string' && options.brandContext.trim()) {
+    return options.brandContext.trim().slice(0, 40);
+  }
+  if (options.brandContext && typeof options.brandContext === 'object') {
+    if (typeof options.brandContext.brandName === 'string' && options.brandContext.brandName.trim()) {
+      return options.brandContext.brandName.trim();
+    }
+  }
+  return 'Your Brand';
+};
+
 const generateSmartFallbackJSON = (prompt, options = {}) => {
-  const brandName = options.brandName || options.brandContext || 'your brand';
+  const brandName = resolveBrandName(options);
   const topicMatch = prompt.match(/about:\s*"([^"]+)"/i) || prompt.match(/topic:\s*([^\n]+)/i) || prompt.match(/keyword:\s*"([^"]+)"/i) || prompt.match(/for:\s*"([^"]+)"/i);
   const topic = topicMatch ? topicMatch[1].trim() : 'Modern Growth Marketing';
 
@@ -260,37 +275,83 @@ const generateSmartFallbackJSON = (prompt, options = {}) => {
 
 const generateSmartFallbackResponse = (messages, options = {}) => {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || 'marketing strategy';
-  const isDetailed = /detail|in-depth|comprehensive|explain/i.test(lastUserMsg);
-  const brandName = options.brandName || options.brandContext || 'your brand';
+  const queryLower = lastUserMsg.toLowerCase().trim();
+  const brandName = resolveBrandName(options);
 
-  if (!isDetailed) {
-    const shortText = `AI Ads™ Platform Instructions for ${brandName}:
-
-- For Instagram & Social Posts: Go to Content Studio (Module 6) or click "+ Quick Post" in the top bar.
-- For AI Ad Visuals & Banners: Go to Creative Studio (Module 9).
-- For Websites & Landing Pages: Use AI Website Builder (Module 7).`;
-
+  // 1. Check for casual/conversational questions (Hindi, Hinglish, English)
+  const isCasualOrFoodQuery = /khana|khaya|khaye|food|lunch|dinner|eat|ate|breakfast|chai|nashta|kaise ho|kya haal|kya kar|hello|hi\b|hey\b|namaste|who are you|kon ho|kaun ho|kaun hai/i.test(queryLower);
+  
+  if (isCasualOrFoodQuery) {
+    if (/khana|khaya|khaye|eat|food|dinner|lunch/i.test(queryLower)) {
+      return {
+        text: `Main ek AI Ads™ Assistant hu, toh main khana nahi khata! Lekin main bilkul 100% active hu aur ${brandName} ke marketing, social media posts, aur ad campaigns scale karne ke liye ready hu. Aap bataiye, aaj aapke brand ke liye kya create karein?`,
+        model: 'AI Ads™ Intelligence Engine',
+        fallback: true
+      };
+    }
     return {
-      text: shortText,
-      model: 'AI Ads™ Intelligence Fallback Engine',
+      text: `Hello! Main AI Ads™ Assistant hu, aapka official AI marketing copilot for ${brandName}. Main aapke ad campaigns, high-converting social posts, SEO strategy, aur landing pages me madad kar sakta hu. Bataiye, aaj hum kis par kaam karein?`,
+      model: 'AI Ads™ Intelligence Engine',
       fallback: true
     };
   }
 
-  const text = `AI Ads™ Platform Guide for ${brandName}:
+  // 2. Check for Social Media / Post Generation queries
+  const isSocialQuery = /post|instagram|caption|linkedin|hook|tweet|facebook|social/i.test(queryLower);
+  if (isSocialQuery) {
+    return {
+      text: `Here is a high-converting social post hook for ${brandName}:\n\n` +
+            `🚀 Transform your brand strategy today with ${brandName}!\n\n` +
+            `Want to generate ready-to-publish Instagram posts, LinkedIn hooks, and multi-channel content?\n` +
+            `Open Content Studio (Module 6) or click "+ Quick Post" in the top bar to create posts tailored to your Brand DNA.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 1. Content & Post Generation
-Open Content Studio (Module 6) from the left sidebar to generate Instagram posts, captions, hashtags, and social copy.
+  // 3. Check for Visuals / Image / Ad Creation queries
+  const isVisualQuery = /image|visual|creative|banner|ad image|photo|graphic|design/i.test(queryLower);
+  if (isVisualQuery) {
+    return {
+      text: `For high-resolution AI ad visual generation and banners tailored to ${brandName}:\n\n` +
+            `- Recommended Image Prompt: Professional commercial photography representing ${brandName}, 8k resolution, modern studio lighting.\n` +
+            `- Quick Access: Open Creative Studio (Module 9) from the left sidebar to generate visual variations and ad banners instantly.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 2. Visual Ad Creation
-Open Creative Studio (Module 9) to generate high-converting AI ad visuals and banners tailored to your Brand DNA.
+  // 4. Check for Website / Landing Page queries
+  const isWebQuery = /website|landing page|builder|hero section|page/i.test(queryLower);
+  if (isWebQuery) {
+    return {
+      text: `To build or edit high-converting landing pages for ${brandName}:\n\n` +
+            `Open AI Website Builder (Module 7) from the left sidebar. You can generate complete responsive websites using conversational AI prompts and customize your layout in real-time.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 3. Landing Page & Website Build
-Use AI Website Builder (Module 7) to generate and edit landing pages using conversational AI prompts.`;
+  // 5. Default intelligent response for general marketing queries
+  const isDetailed = /detail|in-depth|comprehensive|explain/i.test(queryLower);
+  if (!isDetailed) {
+    return {
+      text: `AI Ads™ Strategy Guide for ${brandName}:\n\n` +
+            `- For Instagram & Social Posts: Go to Content Studio (Module 6) or click "+ Quick Post" in the top bar.\n` +
+            `- For AI Ad Visuals & Banners: Go to Creative Studio (Module 9).\n` +
+            `- For Websites & Landing Pages: Use AI Website Builder (Module 7).\n` +
+            `- For Strategy & SEO: Visit Strategy (Module 4) or SEO Intelligence (Module 3).`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
   return {
-    text,
-    model: 'AI Ads™ Intelligence Fallback Engine',
+    text: `AI Ads™ Platform Guide for ${brandName}:\n\n` +
+          `1. Content & Post Generation: Open Content Studio (Module 6) to generate social copy, captions, and hashtags.\n` +
+          `2. Visual Ad Creation: Open Creative Studio (Module 9) to generate high-converting ad images.\n` +
+          `3. Website Building: Open AI Website Builder (Module 7) to generate responsive landing pages.`,
+    model: 'AI Ads™ Intelligence Engine',
     fallback: true
   };
 };
