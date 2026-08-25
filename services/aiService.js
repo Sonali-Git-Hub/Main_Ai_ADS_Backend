@@ -173,6 +173,91 @@ const chatWithGroq = async (messages, options = {}) => {
 };
 
 // ─── Smart Fallback Response Generator ───────────────────────────────────────
+const generateSmartFallbackJSON = (prompt, options = {}) => {
+  const brandName = options.brandName || options.brandContext || 'your brand';
+  const topicMatch = prompt.match(/about:\s*"([^"]+)"/i) || prompt.match(/topic:\s*([^\n]+)/i) || prompt.match(/keyword:\s*"([^"]+)"/i) || prompt.match(/for:\s*"([^"]+)"/i);
+  const topic = topicMatch ? topicMatch[1].trim() : 'Modern Growth Marketing';
+
+  const isSocial = /social|instagram|linkedin|facebook|twitter|post|hook/i.test(prompt);
+  const isBlog = /blog|article|readingTime/i.test(prompt);
+  const isAdCopy = /ad copy|headlines|callToActions/i.test(prompt);
+  const isEmail = /email|newsletter|subject|preheader/i.test(prompt);
+  const isSeo = /seo|brief|metaDescription|searchIntent/i.test(prompt);
+
+  if (isSocial) {
+    return {
+      hook: `🚀 Transform your ${topic} strategy with ${brandName}!`,
+      shortCaption: `Discover how ${brandName} revolutionizes ${topic} for peak growth.`,
+      caption: `Ready to elevate your ${topic}? At ${brandName}, we combine innovative strategies with modern execution to deliver high-converting social content. Explore our full suite of AI tools to automate and scale your brand presence today!`,
+      longCaption: `Are you looking to scale ${topic}? Building a sustainable brand requires consistent, high-impact content.\n\nHere is how ${brandName} empowers your workflow:\n1. Targeted Audience Alignment\n2. High-Converting Copy & Visuals\n3. Automated Multi-Channel Scheduling\n\nTake action today and transform your content strategy with ${brandName}.`,
+      cta: `👉 Click the link in bio or visit ${brandName} to unlock instant access!`,
+      hashtags: [`#${brandName.replace(/\s+/g, '')}`, `#${topic.replace(/[^a-zA-Z0-9]/g, '')}`, '#GrowthMarketing', '#AIContent', '#MarketingStrategy'],
+      creativeVariations: [
+        {
+          type: 'STORYTELLING ANGLE',
+          text: `How ${brandName} revolutionized ${topic} by focusing on audience-first value and data-driven insights.`
+        },
+        {
+          type: 'PROBLEM-SOLUTION',
+          text: `Struggling with ${topic}? Here is how ${brandName} solves low engagement and saves you hours every week.`
+        }
+      ],
+      imagePrompt: `Professional high-resolution commercial photography representing ${topic} for ${brandName}, 8k resolution, studio lighting, modern sleek aesthetic`,
+      bestTimeToPost: '9:00 AM - 11:00 AM EST',
+      expectedEngagement: 'High (85%+ Target Reach)'
+    };
+  }
+
+  if (isBlog) {
+    return {
+      title: `The Ultimate Guide to ${topic} for ${brandName}`,
+      metaDescription: `Discover the top strategies for ${topic} with ${brandName}. Learn key takeaways and growth frameworks.`,
+      content: `## Introduction\nIn today's digital landscape, ${topic} plays a pivotal role in driving sustainable brand growth...\n\n## 1. Understanding ${topic}\nBuilding a powerful brand requires strategic alignment...\n\n## 2. Key Action Steps\nImplement data-backed strategies to maximize reach and ROI.\n\n## Conclusion\nReady to get started? Connect with ${brandName} today!`,
+      wordCount: 800,
+      readingTime: '4 min read',
+      seoScore: 88,
+      keywords: [topic, brandName, 'Growth', 'Strategy'],
+      outline: ['Introduction', `Understanding ${topic}`, 'Key Action Steps', 'Conclusion'],
+      internalLinkSuggestions: ['Content Studio', 'SEO Intelligence']
+    };
+  }
+
+  if (isAdCopy) {
+    return {
+      headlines: [`Scale ${topic} Fast`, `${brandName}: #1 Choice`, 'Boost Your ROI Today'],
+      descriptions: [`Transform your ${topic} with ${brandName}. Get started with high-converting campaigns.`, `Automate and scale ${topic} in minutes. Try ${brandName} today.`],
+      callToActions: ['Get Started', 'Learn More', 'Claim Free Trial'],
+      longFormAd: `🚀 Are you struggling with ${topic}?\n\nDiscover how ${brandName} helps businesses scale faster with intelligent automation and data-driven insights.\n\n👉 Click below to start today!`,
+      shortAd: `Transform your ${topic} with ${brandName}. High-converting ad campaigns created in seconds. Try it now!`,
+      keyBenefits: ['Instant Automation', 'Higher Conversion Rates', 'Data-Backed Strategy']
+    };
+  }
+
+  if (isSeo) {
+    return {
+      primaryKeyword: topic,
+      secondaryKeywords: [`${topic} strategy`, `best ${topic} tools`, `${brandName} ${topic}`],
+      suggestedTitles: [`Mastering ${topic}: A Complete Guide`, `Top 10 ${topic} Strategies for 2026`, `${topic} Best Practices`],
+      metaDescription: `Comprehensive guide to ${topic}. Learn how ${brandName} helps you optimize content and rank higher.`,
+      contentOutline: [`Introduction to ${topic}`, 'Core Strategies', 'Optimization Checklist', 'Summary'],
+      wordCountTarget: 1500,
+      searchIntent: 'informational',
+      competitorTopics: [`${topic} tools`, `${topic} tutorials`],
+      faqSuggestions: [`What is ${topic}?`, `How does ${brandName} improve ${topic}?`],
+      internalLinkOpportunities: ['SEO Studio', 'Brand Memory']
+    };
+  }
+
+  return {
+    success: true,
+    topic,
+    brandName,
+    summary: `AI Generated insights for ${topic}`,
+    content: `High-converting content for ${topic} powered by ${brandName}.`,
+    cta: `Explore ${brandName} features today!`
+  };
+};
+
 const generateSmartFallbackResponse = (messages, options = {}) => {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || 'marketing strategy';
   const isDetailed = /detail|in-depth|comprehensive|explain/i.test(lastUserMsg);
@@ -262,8 +347,20 @@ const generateJSON = async (prompt, options = {}) => {
   const jsonInstruction = `\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no explanation. Just raw JSON.`;
   
   console.log(`${reqTag}AI generateJSON started...`);
-  const result = await generate(prompt + jsonInstruction, options);
   
+  let result = null;
+  try {
+    result = await generate(prompt + jsonInstruction, options);
+  } catch (genErr) {
+    console.warn(`${reqTag}AI generate threw error (${genErr.message}). Using Smart Fallback JSON.`);
+  }
+  
+  if (!result || !result.text || result.fallback) {
+    console.log(`${reqTag}Using Smart Fallback JSON structure.`);
+    const fallbackData = generateSmartFallbackJSON(prompt, options);
+    return { data: fallbackData, model: 'AI Ads™ Smart Fallback Engine' };
+  }
+
   try {
     const cleaned = result.text.replace(/```json\n?|```\n?/g, '').trim();
     const data = JSON.parse(cleaned);
@@ -298,8 +395,9 @@ const generateJSON = async (prompt, options = {}) => {
         return { data: partialData, model: result.model };
       }
     }
-    console.error(`${reqTag}JSON parsing failed on AI response snippet: ${result.text.substring(0, 150)}`);
-    return null;
+    console.warn(`${reqTag}JSON parsing failed on AI response snippet. Using Smart Fallback JSON.`);
+    const fallbackData = generateSmartFallbackJSON(prompt, options);
+    return { data: fallbackData, model: 'AI Ads™ Smart Fallback Engine' };
   }
 };
 

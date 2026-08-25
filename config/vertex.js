@@ -16,8 +16,18 @@ if (fs.existsSync(keyFilePath)) {
   console.log('✅ Vertex AI: Using service account keyfile google_cloud_credentials.json');
 }
 
-// Initialize @google/genai in Vertex AI Mode using Google Cloud ADC (asia-south1)
-if (projectId) {
+// Initialize @google/genai in Vertex AI Mode or direct API Key Mode
+const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+if (apiKey && apiKey !== 'your_gemini_api_key_here') {
+  try {
+    aiClient = new GoogleGenAI({ apiKey });
+    useVertexAI = false;
+    console.log('✅ @google/genai initialized using direct Gemini API key');
+  } catch (err) {
+    console.warn('⚠️ GoogleGenAI API key init error:', err.message);
+  }
+} else if (projectId) {
   try {
     aiClient = new GoogleGenAI({
       vertexAI: true,
