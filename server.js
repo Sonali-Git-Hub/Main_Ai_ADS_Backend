@@ -349,7 +349,7 @@ app.put('/api/auth/profile', async (req, res) => {
   }
 });
 
-// Product Feedback / Support Ticket Endpoint -> Delivers emails to admin@uwo24.com
+// Product Feedback / Support Ticket Endpoint -> Delivers emails to admin@uwo24.com & saves to DB
 app.post('/api/feedback', async (req, res) => {
   const { email, name, feedback, category } = req.body;
   if (!feedback || !feedback.trim()) {
@@ -360,19 +360,35 @@ app.post('/api/feedback', async (req, res) => {
   const senderName = name || senderEmail.split('@')[0];
 
   try {
+    // 1. Save ticket into MongoDB SupportTicket collection
+    const SupportTicket = require('./models/SupportTicket');
+    const ticketCount = await SupportTicket.countDocuments({});
+    const ticketId = `TICK-${101 + ticketCount}`;
+    await SupportTicket.create({
+      ticketId,
+      email: senderEmail,
+      name: senderName,
+      subject: feedback.trim().slice(0, 50) + (feedback.trim().length > 50 ? '...' : ''),
+      priority: 'Medium',
+      status: 'Open',
+      category: category || 'Product Feedback',
+      message: feedback.trim(),
+    });
+
+    // 2. Dispatch email notification
     const { sendProductFeedbackEmail } = require('./services/emailService');
     await sendProductFeedbackEmail({
       userEmail: senderEmail,
       userName: senderName,
       feedbackText: feedback.trim(),
       category: category || 'Product Feedback'
-    });
+    }).catch(e => console.error('Email dispatch error (non-fatal):', e.message));
 
-    console.log(`💡 [FEEDBACK RECEIVED] Email dispatched to admin@uwo24.com from ${senderEmail}`);
-    return res.json({ success: true, message: 'Feedback successfully sent to admin@uwo24.com' });
+    console.log(`💡 [FEEDBACK RECEIVED] Saved ticket ${ticketId} and dispatched email for ${senderEmail}`);
+    return res.json({ success: true, message: 'Feedback successfully recorded & sent.', ticketId });
   } catch (err) {
-    console.error('Error dispatching feedback email:', err);
-    return res.status(500).json({ success: false, error: 'Failed to deliver feedback email.' });
+    console.error('Error recording feedback ticket:', err);
+    return res.status(500).json({ success: false, error: 'Failed to record feedback ticket.' });
   }
 });
 
