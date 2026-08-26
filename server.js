@@ -61,9 +61,20 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ─── Real-Time Terminal Action, Request, Warning & Error Logger Middleware ─────
+const SystemSetting = require('./models/SystemSetting');
+
 app.use((req, res, next) => {
   const start = Date.now();
   const time = new Date().toLocaleTimeString();
+
+  // Increment persistent platform API Hit Counter for all non-admin /api user requests
+  if (req.originalUrl.startsWith('/api') && !req.originalUrl.startsWith('/api/admin') && !req.originalUrl.startsWith('/api/telemetry')) {
+    SystemSetting.findOneAndUpdate(
+      { key: 'total_api_hits' },
+      { $inc: { value: 1 } },
+      { upsert: true, setDefaultsOnInsert: true }
+    ).catch(() => {});
+  }
 
   // Log incoming request immediately
   const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
@@ -463,6 +474,12 @@ app.post('/api/workspace/scrape-preview', async (req, res) => {
     const { domainUrl, brandName, userEmail } = req.body;
     if (!domainUrl) return res.status(400).json({ success: false, error: 'Domain URL is required' });
 
+    try {
+      require('./services/telemetryService').recordTelemetryEvent({
+        source: 'USER', eventType: 'USER_ACTION', component: 'BrandDnaScraper', action: 'SCRAPE_DOMAIN', page: '/brand-dna'
+      });
+    } catch (e) {}
+
     console.log(`🌐 [SCRAPER-PREVIEW] Generating non-persisted Brand DNA preview for: ${domainUrl}`);
     const brandDna = await generateBrandDNA(domainUrl, brandName || '');
 
@@ -475,15 +492,26 @@ app.post('/api/workspace/scrape-preview', async (req, res) => {
       domainUrl: brandDna.domainUrl || domainUrl,
       logoUrl: brandDna.faviconUrl || '',
       brandColors: brandDna.brandColors || [],
-      industry: brandDna.industryCategory || 'Consumer Products',
-      industryCategory: brandDna.industryCategory || 'Consumer Products',
-      subIndustry: brandDna.subIndustry || '',
-      businessType: brandDna.businessType || 'B2C Direct Brand',
-      headquarters: brandDna.headquarters || 'Mumbai, Maharashtra, India',
-      companyDescription: brandDna.companyDescription || '',
-      tagline: brandDna.tagline || '',
-      missionStatement: brandDna.missionStatement || '',
-      vision: brandDna.vision || '',
+      industry: brandDna.industryCategory || null,
+      industryCategory: brandDna.industryCategory || null,
+      subIndustry: brandDna.subIndustry || null,
+      businessType: brandDna.businessType || null,
+      headquarters: brandDna.headquarters || null,
+      companyDescription: brandDna.companyDescription || null,
+      tagline: brandDna.tagline || null,
+      missionStatement: brandDna.missionStatement || null,
+      vision: brandDna.vision || null,
+      industryProvenance: brandDna.industryProvenance || null,
+      secondaryIndustries: brandDna.secondaryIndustries || [],
+      businessTypeProvenance: brandDna.businessTypeProvenance || null,
+      headquartersProvenance: brandDna.headquartersProvenance || null,
+      locations: brandDna.locations || [],
+      companyDescriptionProvenance: brandDna.companyDescriptionProvenance || null,
+      taglineProvenance: brandDna.taglineProvenance || null,
+      missionStatementProvenance: brandDna.missionStatementProvenance || null,
+      visionProvenance: brandDna.visionProvenance || null,
+      targetAudienceProvenance: brandDna.targetAudienceProvenance || null,
+      coreProductsServicesProvenance: brandDna.coreProductsServicesProvenance || null,
       targetAudience: brandDna.targetAudience || [],
       brandVoiceTone: brandDna.brandVoiceTone || { formalityScore: 3, toneKeywords: [] },
       coreProductsServices: brandDna.coreProductsServices || [],

@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const contentController = require('../controllers/contentController');
 
+// Save Asset to Library & Trigger Telemetry
+router.post('/save-asset', contentController.saveAsset);
+
 // Social content
 router.post('/social/generate', contentController.generateSocialPost);
 

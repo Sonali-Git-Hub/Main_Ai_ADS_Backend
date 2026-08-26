@@ -60,116 +60,86 @@ function extractTextReplacementIntent(prompt = '') {
 /**
  * Detects color & theme modification requests
  */
+const COLOR_DICTIONARY = {
+  red: '#DC2626',
+  crimson: '#B91C1C',
+  ruby: '#991B1B',
+  blue: '#2563EB',
+  navy: '#1E40AF',
+  cyan: '#06B6D4',
+  ocean: '#0284C7',
+  green: '#059669',
+  emerald: '#047857',
+  mint: '#10B981',
+  purple: '#7C3AED',
+  violet: '#6D28D9',
+  lavender: '#8B5CF6',
+  orange: '#EA580C',
+  amber: '#D97706',
+  yellow: '#EAB308',
+  gold: '#D97706',
+  pink: '#EC4899',
+  rose: '#F43F5E',
+  black: '#0F172A',
+  dark: '#1E293B',
+  white: '#FFFFFF',
+  ivory: '#FFFFF0',
+  teal: '#0D9488'
+};
+
+/**
+ * Universal Dynamic Multi-Color Intent Extractor
+ */
 function extractThemeColorIntent(prompt = '') {
   const p = prompt.toLowerCase();
 
-  // Red theme
-  if (p.includes('red') || p.includes('crimson') || p.includes('ruby')) {
-    return {
-      themeName: 'Crimson Red',
-      cssUpdates: {
-        '--primary-color': '#DC2626',
-        '--secondary-color': '#991B1B',
-        '--accent-color': '#F87171',
-        '--card-border': 'rgba(220, 38, 38, 0.2)'
-      },
-      hex: '#DC2626'
-    };
+  // Extract all color keywords present in prompt in order of appearance
+  const foundColors = [];
+  const words = p.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/);
+  
+  for (const word of words) {
+    if (COLOR_DICTIONARY[word] && !foundColors.some(c => c.name === word)) {
+      foundColors.push({ name: word, hex: COLOR_DICTIONARY[word] });
+    }
   }
 
-  // Blue theme
-  if (p.includes('blue') || p.includes('ocean') || p.includes('cyan')) {
-    return {
-      themeName: 'Ocean Blue',
-      cssUpdates: {
-        '--primary-color': '#2563EB',
-        '--secondary-color': '#1D4ED8',
-        '--accent-color': '#60A5FA',
-        '--card-border': 'rgba(37, 99, 235, 0.2)'
-      },
-      hex: '#2563EB'
-    };
+  if (foundColors.length === 0) {
+    // Check key phrases
+    if (p.includes('black and ivory') || p.includes('ivory')) {
+      foundColors.push({ name: 'black', hex: '#111111' }, { name: 'ivory', hex: '#FFFFF0' });
+    } else if (p.includes('dark mode') || p.includes('midnight')) {
+      foundColors.push({ name: 'dark', hex: '#0B0F19' });
+    } else {
+      return null;
+    }
   }
 
-  // Green / Emerald theme
-  if (p.includes('green') || p.includes('emerald') || p.includes('mint')) {
-    return {
-      themeName: 'Emerald Green',
-      cssUpdates: {
-        '--primary-color': '#059669',
-        '--secondary-color': '#047857',
-        '--accent-color': '#34D399',
-        '--card-border': 'rgba(5, 150, 105, 0.2)'
-      },
-      hex: '#059669'
-    };
-  }
+  // Format Theme Name according to all user-selected colors
+  const formattedNames = foundColors.map(c => c.name.charAt(0).toUpperCase() + c.name.slice(1));
+  const themeName = formattedNames.length > 1
+    ? `${formattedNames.join(', ')} Dynamic Palette`
+    : `${formattedNames[0]} Theme`;
 
-  // Purple / Violet theme
-  if (p.includes('purple') || p.includes('violet') || p.includes('lavender')) {
-    return {
-      themeName: 'Royal Purple',
-      cssUpdates: {
-        '--primary-color': '#7C3AED',
-        '--secondary-color': '#6D28D9',
-        '--accent-color': '#A78BFA',
-        '--card-border': 'rgba(124, 58, 237, 0.2)'
-      },
-      hex: '#7C3AED'
-    };
-  }
+  const primary = foundColors[0].hex;
+  const secondary = foundColors.length > 1 ? foundColors[1].hex : primary;
+  const accent = foundColors.length > 2 ? foundColors[2].hex : (foundColors.length > 1 ? foundColors[1].hex : primary);
 
-  // Black & Ivory / Minimalist Luxury
-  if (p.includes('black and ivory') || p.includes('ivory') || p.includes('black & white')) {
-    return {
-      themeName: 'Black & Ivory Minimalist',
-      cssUpdates: {
-        '--primary-color': '#111111',
-        '--secondary-color': '#222222',
-        '--accent-color': '#444444',
-        '--bg-color': '#FFFFF0',
-        '--text-color': '#111111',
-        '--card-bg': '#FFFFFF',
-        '--card-border': 'rgba(0, 0, 0, 0.12)'
-      },
-      hex: '#111111'
-    };
-  }
-
-  // Dark / Midnight mode
-  if (p.includes('dark theme') || p.includes('dark mode') || p.includes('midnight') || p.includes('black theme')) {
-    return {
-      themeName: 'Midnight Dark',
-      cssUpdates: {
-        '--bg-color': '#0B0F19',
-        '--text-color': '#F8FAFC',
-        '--text-muted': '#94A3B8',
-        '--card-bg': '#111827',
-        '--card-border': 'rgba(255, 255, 255, 0.1)'
-      },
-      hex: '#0B0F19'
-    };
-  }
-
-  // Warmer / Softer Dental aesthetic
-  if (p.includes('warmer') || p.includes('softer') || p.includes('dental')) {
-    return {
-      themeName: 'Warm Soft Dental',
-      cssUpdates: {
-        '--primary-color': '#38BDF8',
-        '--secondary-color': '#0EA5E9',
-        '--accent-color': '#34D399',
-        '--bg-color': '#F8FAFC',
-        '--text-color': '#0F172A',
-        '--text-muted': '#475569',
-        '--card-bg': '#FFFFFF',
-        '--card-border': 'rgba(56, 189, 248, 0.15)'
-      },
-      hex: '#38BDF8'
-    };
-  }
-
-  return null;
+  return {
+    themeName,
+    cssUpdates: {
+      '--primary-color': primary,
+      '--secondary-color': secondary,
+      '--accent-color': accent,
+      '--cta-bg': primary,
+      '--badge-bg': `${secondary}1F`,
+      '--badge-text': secondary,
+      '--card-border': `${primary}40`
+    },
+    hex: primary,
+    secondaryHex: secondary,
+    accentHex: accent,
+    colorsList: foundColors
+  };
 }
 
 /**
@@ -338,13 +308,196 @@ async function processChatEditRequest(options = {}) {
     }
   }
 
+/**
+ * Granular Intent Detector for Specific Single-Property Operations
+ * Ensures the assistant NEVER converts background-only, button-only, or navbar-only requests into generic theme operations!
+ */
+function extractGranularStyleIntent(prompt = '') {
+  const p = prompt.toLowerCase().trim();
+
+  const extractTargetHex = (str) => {
+    const hexMatch = str.match(/#(?:[0-9a-fA-F]{3}){1,2}\b/);
+    if (hexMatch) return hexMatch[0];
+
+    if (str.includes('black') || str.includes('pure black')) return '#000000';
+    if (str.includes('white') || str.includes('pure white')) return '#FFFFFF';
+    if (str.includes('red') || str.includes('crimson')) return '#DC2626';
+    if (str.includes('blue') || str.includes('navy')) return '#1E40AF';
+    if (str.includes('green') || str.includes('emerald')) return '#059669';
+    if (str.includes('purple') || str.includes('violet')) return '#7C3AED';
+    if (str.includes('yellow') || str.includes('amber')) return '#D97706';
+    if (str.includes('orange')) return '#EA580C';
+    if (str.includes('pink') || str.includes('rose')) return '#EC4899';
+    if (str.includes('grey') || str.includes('gray')) return '#4B5563';
+    return null;
+  };
+
+  const targetHex = extractTargetHex(p);
+
+  // 1. BACKGROUND ONLY INTENT (Highest Priority if prompt asks for website/site/page/body background)
+  const isExplicitBgRequest = p.includes('website background') ||
+                               p.includes('site background') ||
+                               p.includes('body background') ||
+                               p.includes('page background') ||
+                               p.includes('background color') ||
+                               p.includes('bg color');
+
+  if (isExplicitBgRequest && targetHex) {
+    return {
+      type: 'BACKGROUND_ONLY',
+      hex: targetHex,
+      description: `Updated website background color to ${targetHex}.`
+    };
+  }
+
+  // 2. BUTTON ONLY INTENT (If prompt asks for button/cta color specifically)
+  const isExplicitButtonRequest = p.includes('button color') ||
+                                   p.includes('cta color') ||
+                                   p.includes('btn color') ||
+                                   (p.includes('button') && (p.includes('color') || p.includes('red') || p.includes('blue') || p.includes('green')));
+
+  if (isExplicitButtonRequest && targetHex && !isExplicitBgRequest) {
+    return {
+      type: 'BUTTON_ONLY',
+      hex: targetHex,
+      description: `Updated button color to ${targetHex}.`
+    };
+  }
+
+  // 3. NAVBAR HOVER INTENT (If prompt asks to change hover color on navbar links)
+  const isNavbarHoverRequest = p.includes('hover') && (p.includes('navbar') || p.includes('nav') || p.includes('link') || p.includes('bakemenu') || p.includes('home') || p.includes('menu'));
+
+  if (isNavbarHoverRequest && targetHex && !isExplicitBgRequest) {
+    return {
+      type: 'NAVBAR_HOVER',
+      hex: targetHex,
+      description: `Updated navbar link hover color to ${targetHex}.`
+    };
+  }
+
+  // 4. NAVBAR ONLY INTENT (Only if explicitly asking to change navbar background specifically, without requesting website background!)
+  const isExplicitNavbarRequest = (p.includes('navbar background') || p.includes('header background') || p.includes('navbar color') || p.includes('header color')) &&
+                                  !p.includes('website background') && !p.includes('do not change navbar') && !isNavbarHoverRequest;
+
+  if (isExplicitNavbarRequest && targetHex && !isExplicitBgRequest) {
+    return {
+      type: 'NAVBAR_ONLY',
+      hex: targetHex,
+      description: `Updated navbar background color to ${targetHex}.`
+    };
+  }
+
+  return null;
+}
+
   // ── LAYER 2: THEME & COLOR MODIFICATIONS ────────────────────────────────────
   const themeCssPath = Object.keys(sourceFiles).find(f => f.includes('theme.css') || f.includes('styles/theme'));
   const currentThemeCss = themeCssPath ? sourceFiles[themeCssPath] : '';
   const siteDataPath = Object.keys(sourceFiles).find(f => f.includes('siteData.js'));
   const currentSiteData = siteDataPath ? sourceFiles[siteDataPath] : '';
 
-  const themeColorIntent = extractThemeColorIntent(userPrompt);
+  // ── LAYER 1.5: GRANULAR STYLE & SINGLE PROPERTY MODIFICATIONS ───────────────
+  const granularIntent = extractGranularStyleIntent(userPrompt);
+
+  if (granularIntent) {
+    console.log(`${tag}Detected granular style intent:`, granularIntent.type, granularIntent.hex);
+
+    if (granularIntent.type === 'BACKGROUND_ONLY') {
+      const targetHex = granularIntent.hex;
+
+      // Update ONLY --bg-color in theme.css
+      if (themeCssPath && currentThemeCss) {
+        let updatedCss = currentThemeCss;
+        updatedCss = updatedCss.replace(/--bg-color:\s*[^;]+;/, `--bg-color: ${targetHex};`);
+        
+        // If background is dark (#000000 or dark hex), update text-color & card-bg to contrast cleanly
+        if (targetHex === '#000000' || targetHex.startsWith('#0') || targetHex.startsWith('#1')) {
+          updatedCss = updatedCss.replace(/--text-color:\s*[^;]+;/, `--text-color: #F8FAFC;`);
+          updatedCss = updatedCss.replace(/--text-muted:\s*[^;]+;/, `--text-muted: #94A3B8;`);
+          updatedCss = updatedCss.replace(/--card-bg:\s*[^;]+;/, `--card-bg: #111827;`);
+          updatedCss = updatedCss.replace(/--card-border:\s*[^;]+;/, `--card-border: rgba(255, 255, 255, 0.15);`);
+        } else {
+          updatedCss = updatedCss.replace(/--text-color:\s*[^;]+;/, `--text-color: #1E293B;`);
+          updatedCss = updatedCss.replace(/--text-muted:\s*[^;]+;/, `--text-muted: #64748B;`);
+        }
+
+        fs.writeFileSync(path.join(srcDir, themeCssPath), updatedCss, 'utf8');
+        modifiedFiles.add(`src/${themeCssPath}`);
+        sourceFiles[themeCssPath] = updatedCss;
+      }
+
+      // Ensure index.css body & hero-mesh-bg dynamically use var(--bg-color)
+      const indexCssPath = Object.keys(sourceFiles).find(f => f.includes('index.css'));
+      if (indexCssPath && sourceFiles[indexCssPath]) {
+        let indexCssContent = sourceFiles[indexCssPath];
+        indexCssContent = indexCssContent.replace(/body\s*\{[^}]*\}/, `body {\n  font-family: var(--font-family);\n  background-color: var(--bg-color);\n  color: var(--text-color);\n  line-height: 1.6;\n  -webkit-font-smoothing: antialiased;\n}`);
+        if (indexCssContent.includes('.hero-mesh-bg')) {
+          indexCssContent = indexCssContent.replace(/\.hero-mesh-bg\s*\{[^}]*\}/, `.hero-mesh-bg {\n  background: var(--bg-color);\n}`);
+        }
+
+        fs.writeFileSync(path.join(srcDir, indexCssPath), indexCssContent, 'utf8');
+        modifiedFiles.add(`src/${indexCssPath}`);
+        sourceFiles[indexCssPath] = indexCssContent;
+      }
+
+      summaryExplanation = granularIntent.description;
+    } else if (granularIntent.type === 'BUTTON_ONLY') {
+      const targetHex = granularIntent.hex;
+
+      // Update ONLY --primary-color and --cta-bg in theme.css
+      if (themeCssPath && currentThemeCss) {
+        let updatedCss = currentThemeCss;
+        updatedCss = updatedCss.replace(/--primary-color:\s*[^;]+;/, `--primary-color: ${targetHex};`);
+        updatedCss = updatedCss.replace(/--cta-bg:\s*[^;]+;/, `--cta-bg: ${targetHex};`);
+
+        fs.writeFileSync(path.join(srcDir, themeCssPath), updatedCss, 'utf8');
+        modifiedFiles.add(`src/${themeCssPath}`);
+        sourceFiles[themeCssPath] = updatedCss;
+      }
+
+      summaryExplanation = granularIntent.description;
+    } else if (granularIntent.type === 'NAVBAR_HOVER') {
+      const targetHex = granularIntent.hex;
+
+      // Update ONLY .nav-link:hover in index.css
+      const indexCssPath = Object.keys(sourceFiles).find(f => f.includes('index.css'));
+      if (indexCssPath && sourceFiles[indexCssPath]) {
+        let indexCssContent = sourceFiles[indexCssPath];
+        if (/\.nav-link:hover[^{]*\{[^}]*\}/.test(indexCssContent)) {
+          indexCssContent = indexCssContent.replace(/\.nav-link:hover[^{]*\{[^}]*\}/, `.nav-link:hover, .nav-link.active {\n  color: ${targetHex} !important;\n}`);
+        } else {
+          indexCssContent += `\n.nav-link:hover, .nav-link.active { color: ${targetHex} !important; }\n`;
+        }
+
+        fs.writeFileSync(path.join(srcDir, indexCssPath), indexCssContent, 'utf8');
+        modifiedFiles.add(`src/${indexCssPath}`);
+        sourceFiles[indexCssPath] = indexCssContent;
+      }
+
+      summaryExplanation = granularIntent.description;
+    } else if (granularIntent.type === 'NAVBAR_ONLY') {
+      const targetHex = granularIntent.hex;
+
+      // Update ONLY .navbar-header in index.css
+      const indexCssPath = Object.keys(sourceFiles).find(f => f.includes('index.css'));
+      if (indexCssPath && sourceFiles[indexCssPath]) {
+        let indexCssContent = sourceFiles[indexCssPath];
+        if (/\.navbar-header\s*\{[^}]*\}/.test(indexCssContent)) {
+          indexCssContent = indexCssContent.replace(/\.navbar-header\s*\{[^}]*\}/, `.navbar-header {\n  position: sticky;\n  top: 0;\n  z-index: 50;\n  width: 100%;\n  background-color: ${targetHex} !important;\n  backdrop-filter: blur(12px);\n  border-bottom: 1px solid var(--card-border);\n}`);
+        } else {
+          indexCssContent += `\n.navbar-header { background-color: ${targetHex} !important; }\n`;
+        }
+
+        fs.writeFileSync(path.join(srcDir, indexCssPath), indexCssContent, 'utf8');
+        modifiedFiles.add(`src/${indexCssPath}`);
+        sourceFiles[indexCssPath] = indexCssContent;
+      }
+
+      summaryExplanation = granularIntent.description;
+    }
+  }
+
+  const themeColorIntent = (modifiedFiles.size === 0) ? extractThemeColorIntent(userPrompt) : null;
 
   if (themeColorIntent && themeCssPath && currentThemeCss) {
     console.log(`${tag}Detected theme color intent:`, themeColorIntent.themeName);
@@ -366,10 +519,35 @@ async function processChatEditRequest(options = {}) {
     sourceFiles[themeCssPath] = updatedCss;
 
     if (themeColorIntent.hex && siteDataPath && currentSiteData) {
-      const updatedSiteData = currentSiteData.replace(/"primaryColor":\s*"[^"]+"/, `"primaryColor": "${themeColorIntent.hex}"`);
+      let updatedSiteData = currentSiteData.replace(/"primaryColor":\s*"[^"]+"/, `"primaryColor": "${themeColorIntent.hex}"`);
+      if (themeColorIntent.secondaryHex) {
+        if (/"secondaryColor":\s*"[^"]+"/.test(updatedSiteData)) {
+          updatedSiteData = updatedSiteData.replace(/"secondaryColor":\s*"[^"]+"/, `"secondaryColor": "${themeColorIntent.secondaryHex}"`);
+        } else {
+          updatedSiteData = updatedSiteData.replace(/"primaryColor":\s*"[^"]+"/, `"primaryColor": "${themeColorIntent.hex}",\n    "secondaryColor": "${themeColorIntent.secondaryHex}"`);
+        }
+      }
       fs.writeFileSync(path.join(srcDir, siteDataPath), updatedSiteData, 'utf8');
       modifiedFiles.add(`src/${siteDataPath}`);
       sourceFiles[siteDataPath] = updatedSiteData;
+    }
+
+    // 🛡️ Dynamically update JSX components (Navbar, Hero, Header, Footer) to apply primary, secondary, accent colors
+    for (const [relPath, content] of Object.entries(sourceFiles)) {
+      if (/\.(jsx|tsx)$/i.test(relPath) && (relPath.includes('components') || relPath.includes('pages') || relPath.includes('App'))) {
+        let newContent = content;
+
+        // Replace hardcoded CTA background colors with primary theme color CSS variable
+        newContent = newContent.replace(/bg-(?:emerald|rose|brand|indigo|blue|red|purple|amber|teal|violet)-[0-9]{3}/g, 'bg-[var(--primary-color)]');
+        newContent = newContent.replace(/text-(?:emerald|rose|brand|indigo|blue|red|purple|amber|teal|violet)-[0-9]{3}/g, 'text-[var(--secondary-color)]');
+        newContent = newContent.replace(/border-(?:emerald|rose|brand|indigo|blue|red|purple|amber|teal|violet)-[0-9]{3}/g, 'border-[var(--accent-color)]');
+
+        if (newContent !== content) {
+          fs.writeFileSync(path.join(srcDir, relPath), newContent, 'utf8');
+          modifiedFiles.add(`src/${relPath}`);
+          sourceFiles[relPath] = newContent;
+        }
+      }
     }
 
     summaryExplanation = `Updated website theme to ${themeColorIntent.themeName}.`;

@@ -325,7 +325,11 @@ class ProjectSandboxService {
     });
 
     child.on('close', (code) => {
-      console.log(`[WB:SANDBOX:${projectId}] Vite process exited with code ${code}`);
+      if (runtimeState.isExplicitStop) {
+        console.log(`[WB:SANDBOX:${projectId}] Previous runtime server process terminated for rebuild.`);
+      } else {
+        console.log(`[WB:SANDBOX:${projectId}] Vite process exited with code ${code}`);
+      }
       if (runtimeState.status === 'RUNNING' || runtimeState.status === 'STARTING') {
         runtimeState.status = 'STOPPED';
       }
@@ -397,6 +401,7 @@ class ProjectSandboxService {
     if (!runtimeState) return { success: true, message: 'Project not running' };
 
     console.log(`[WB:SANDBOX:${projectId}] Stopping project runtime on port ${runtimeState.port}...`);
+    runtimeState.isExplicitStop = true;
 
     if (runtimeState.childProcess && runtimeState.processId) {
       this.killProcessTree(runtimeState.processId);
