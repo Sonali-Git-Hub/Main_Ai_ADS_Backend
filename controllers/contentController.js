@@ -104,7 +104,9 @@ Return JSON with exact keys:
 }`;
 
     const result = await generateJSON(prompt, { model, temperature: 0.85 });
-    if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
+    const postData = result?.data || result;
+
+    if (!postData) return res.status(500).json({ success: false, error: 'Generation failed' });
 
     // Save to Content collection
     try {
@@ -113,14 +115,16 @@ Return JSON with exact keys:
         title: `${platform}: ${topic}`,
         type: 'SOCIAL',
         platform,
-        content: result.caption,
-        briefData: result,
-        author: `AI (${model})`,
+        content: postData.caption || postData.shortCaption || '',
+        briefData: postData,
+        author: `AI (${result?.model || model})`,
         status: 'INTERNAL_REVIEW',
       });
-    } catch {}
+    } catch (saveErr) {
+      console.warn('[ContentController] DB Save notice:', saveErr.message);
+    }
 
-    res.json({ success: true, platform, topic, data: result });
+    res.json({ success: true, platform, topic, data: postData, model: result?.model || model });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

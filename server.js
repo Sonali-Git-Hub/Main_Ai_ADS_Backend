@@ -1465,23 +1465,52 @@ app.get('/api/analytics/summary', async (req, res) => {
     const { workspaceId } = req.query;
     const filter = workspaceId ? { workspaceId } : {};
 
-    const [totalCampaigns, activeCampaigns, totalPosts, approvedPosts, generatedPosts] = await Promise.all([
+    // Count from ALL content collections for accurate dashboard stats
+    const [
+      totalCampaigns, activeCampaigns,
+      cpTotal, cpApproved, cpGenerated,
+      gpTotal, gpApproved,
+      contentTotal, contentApproved
+    ] = await Promise.all([
+      // Campaign counts
       Campaign.countDocuments(filter),
       Campaign.countDocuments({ ...filter, status: 'Active' }),
+      // CampaignPost counts (posts inside campaigns)
       CampaignPost.countDocuments(filter),
       CampaignPost.countDocuments({ ...filter, approvalStatus: 'Approved' }),
       CampaignPost.countDocuments({ ...filter, status: 'Generated' }),
+      // GeneratedPost counts (quick posts, studio posts)
+      GeneratedPost.countDocuments(filter),
+      GeneratedPost.countDocuments({ ...filter, status: 'approved' }),
+      // Content counts (blog, social, SEO briefs from editorial studio)
+      Content.countDocuments(filter),
+      Content.countDocuments({ ...filter, status: 'APPROVED' }),
     ]);
+
+    // Aggregate totals across all collections
+    const totalGenerated = cpTotal + gpTotal + contentTotal;
+    const totalApproved = cpApproved + gpApproved + contentApproved;
+    // "Generated" status posts specifically (content that has been AI-generated)
+    const generatedStatusCount = cpGenerated + gpTotal;
 
     res.json({
       success: true,
       analytics: {
         campaigns: { total: totalCampaigns, active: activeCampaigns },
-        posts: { total: totalPosts, approved: approvedPosts, generated: generatedPosts },
-        approvalRate: totalPosts > 0 ? Math.round((approvedPosts / totalPosts) * 100) : 0,
+        posts: {
+          total: totalGenerated,
+          approved: totalApproved,
+          generated: generatedStatusCount,
+          // Detailed breakdown for debugging / advanced analytics
+          campaignPosts: cpTotal,
+          generatedPosts: gpTotal,
+          contentPosts: contentTotal,
+        },
+        approvalRate: totalGenerated > 0 ? Math.round((totalApproved / totalGenerated) * 100) : 0,
       },
     });
   } catch (err) {
+    console.error('[Analytics] Error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

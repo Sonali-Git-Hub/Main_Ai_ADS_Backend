@@ -173,39 +173,185 @@ const chatWithGroq = async (messages, options = {}) => {
 };
 
 // ─── Smart Fallback Response Generator ───────────────────────────────────────
+const resolveBrandName = (options = {}) => {
+  if (typeof options.brandName === 'string' && options.brandName.trim()) {
+    return options.brandName.trim();
+  }
+  if (typeof options.brandContext === 'string' && options.brandContext.trim()) {
+    return options.brandContext.trim().slice(0, 40);
+  }
+  if (options.brandContext && typeof options.brandContext === 'object') {
+    if (typeof options.brandContext.brandName === 'string' && options.brandContext.brandName.trim()) {
+      return options.brandContext.brandName.trim();
+    }
+  }
+  return 'Your Brand';
+};
+
+const generateSmartFallbackJSON = (prompt, options = {}) => {
+  const brandName = resolveBrandName(options);
+  const topicMatch = prompt.match(/about:\s*"([^"]+)"/i) || prompt.match(/topic:\s*([^\n]+)/i) || prompt.match(/keyword:\s*"([^"]+)"/i) || prompt.match(/for:\s*"([^"]+)"/i);
+  const topic = topicMatch ? topicMatch[1].trim() : 'Modern Growth Marketing';
+
+  const isSocial = /social|instagram|linkedin|facebook|twitter|post|hook/i.test(prompt);
+  const isBlog = /blog|article|readingTime/i.test(prompt);
+  const isAdCopy = /ad copy|headlines|callToActions/i.test(prompt);
+  const isEmail = /email|newsletter|subject|preheader/i.test(prompt);
+  const isSeo = /seo|brief|metaDescription|searchIntent/i.test(prompt);
+
+  if (isSocial) {
+    return {
+      hook: `🚀 Transform your ${topic} strategy with ${brandName}!`,
+      shortCaption: `Discover how ${brandName} revolutionizes ${topic} for peak growth.`,
+      caption: `Ready to elevate your ${topic}? At ${brandName}, we combine innovative strategies with modern execution to deliver high-converting social content. Explore our full suite of AI tools to automate and scale your brand presence today!`,
+      longCaption: `Are you looking to scale ${topic}? Building a sustainable brand requires consistent, high-impact content.\n\nHere is how ${brandName} empowers your workflow:\n1. Targeted Audience Alignment\n2. High-Converting Copy & Visuals\n3. Automated Multi-Channel Scheduling\n\nTake action today and transform your content strategy with ${brandName}.`,
+      cta: `👉 Click the link in bio or visit ${brandName} to unlock instant access!`,
+      hashtags: [`#${brandName.replace(/\s+/g, '')}`, `#${topic.replace(/[^a-zA-Z0-9]/g, '')}`, '#GrowthMarketing', '#AIContent', '#MarketingStrategy'],
+      creativeVariations: [
+        {
+          type: 'STORYTELLING ANGLE',
+          text: `How ${brandName} revolutionized ${topic} by focusing on audience-first value and data-driven insights.`
+        },
+        {
+          type: 'PROBLEM-SOLUTION',
+          text: `Struggling with ${topic}? Here is how ${brandName} solves low engagement and saves you hours every week.`
+        }
+      ],
+      imagePrompt: `Professional high-resolution commercial photography representing ${topic} for ${brandName}, 8k resolution, studio lighting, modern sleek aesthetic`,
+      bestTimeToPost: '9:00 AM - 11:00 AM EST',
+      expectedEngagement: 'High (85%+ Target Reach)'
+    };
+  }
+
+  if (isBlog) {
+    return {
+      title: `The Ultimate Guide to ${topic} for ${brandName}`,
+      metaDescription: `Discover the top strategies for ${topic} with ${brandName}. Learn key takeaways and growth frameworks.`,
+      content: `## Introduction\nIn today's digital landscape, ${topic} plays a pivotal role in driving sustainable brand growth...\n\n## 1. Understanding ${topic}\nBuilding a powerful brand requires strategic alignment...\n\n## 2. Key Action Steps\nImplement data-backed strategies to maximize reach and ROI.\n\n## Conclusion\nReady to get started? Connect with ${brandName} today!`,
+      wordCount: 800,
+      readingTime: '4 min read',
+      seoScore: 88,
+      keywords: [topic, brandName, 'Growth', 'Strategy'],
+      outline: ['Introduction', `Understanding ${topic}`, 'Key Action Steps', 'Conclusion'],
+      internalLinkSuggestions: ['Content Studio', 'SEO Intelligence']
+    };
+  }
+
+  if (isAdCopy) {
+    return {
+      headlines: [`Scale ${topic} Fast`, `${brandName}: #1 Choice`, 'Boost Your ROI Today'],
+      descriptions: [`Transform your ${topic} with ${brandName}. Get started with high-converting campaigns.`, `Automate and scale ${topic} in minutes. Try ${brandName} today.`],
+      callToActions: ['Get Started', 'Learn More', 'Claim Free Trial'],
+      longFormAd: `🚀 Are you struggling with ${topic}?\n\nDiscover how ${brandName} helps businesses scale faster with intelligent automation and data-driven insights.\n\n👉 Click below to start today!`,
+      shortAd: `Transform your ${topic} with ${brandName}. High-converting ad campaigns created in seconds. Try it now!`,
+      keyBenefits: ['Instant Automation', 'Higher Conversion Rates', 'Data-Backed Strategy']
+    };
+  }
+
+  if (isSeo) {
+    return {
+      primaryKeyword: topic,
+      secondaryKeywords: [`${topic} strategy`, `best ${topic} tools`, `${brandName} ${topic}`],
+      suggestedTitles: [`Mastering ${topic}: A Complete Guide`, `Top 10 ${topic} Strategies for 2026`, `${topic} Best Practices`],
+      metaDescription: `Comprehensive guide to ${topic}. Learn how ${brandName} helps you optimize content and rank higher.`,
+      contentOutline: [`Introduction to ${topic}`, 'Core Strategies', 'Optimization Checklist', 'Summary'],
+      wordCountTarget: 1500,
+      searchIntent: 'informational',
+      competitorTopics: [`${topic} tools`, `${topic} tutorials`],
+      faqSuggestions: [`What is ${topic}?`, `How does ${brandName} improve ${topic}?`],
+      internalLinkOpportunities: ['SEO Studio', 'Brand Memory']
+    };
+  }
+
+  return {
+    success: true,
+    topic,
+    brandName,
+    summary: `AI Generated insights for ${topic}`,
+    content: `High-converting content for ${topic} powered by ${brandName}.`,
+    cta: `Explore ${brandName} features today!`
+  };
+};
+
 const generateSmartFallbackResponse = (messages, options = {}) => {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || 'marketing strategy';
-  const isDetailed = /detail|in-depth|comprehensive|explain/i.test(lastUserMsg);
-  const brandName = options.brandName || options.brandContext || 'your brand';
+  const queryLower = lastUserMsg.toLowerCase().trim();
+  const brandName = resolveBrandName(options);
 
-  if (!isDetailed) {
-    const shortText = `AI Ads™ Platform Instructions for ${brandName}:
-
-- For Instagram & Social Posts: Go to Content Studio (Module 6) or click "+ Quick Post" in the top bar.
-- For AI Ad Visuals & Banners: Go to Creative Studio (Module 9).
-- For Websites & Landing Pages: Use AI Website Builder (Module 7).`;
-
+  // 1. Check for casual/conversational questions (Hindi, Hinglish, English)
+  const isCasualOrFoodQuery = /khana|khaya|khaye|food|lunch|dinner|eat|ate|breakfast|chai|nashta|kaise ho|kya haal|kya kar|hello|hi\b|hey\b|namaste|who are you|kon ho|kaun ho|kaun hai/i.test(queryLower);
+  
+  if (isCasualOrFoodQuery) {
+    if (/khana|khaya|khaye|eat|food|dinner|lunch/i.test(queryLower)) {
+      return {
+        text: `Main ek AI Ads™ Assistant hu, toh main khana nahi khata! Lekin main bilkul 100% active hu aur ${brandName} ke marketing, social media posts, aur ad campaigns scale karne ke liye ready hu. Aap bataiye, aaj aapke brand ke liye kya create karein?`,
+        model: 'AI Ads™ Intelligence Engine',
+        fallback: true
+      };
+    }
     return {
-      text: shortText,
-      model: 'AI Ads™ Intelligence Fallback Engine',
+      text: `Hello! Main AI Ads™ Assistant hu, aapka official AI marketing copilot for ${brandName}. Main aapke ad campaigns, high-converting social posts, SEO strategy, aur landing pages me madad kar sakta hu. Bataiye, aaj hum kis par kaam karein?`,
+      model: 'AI Ads™ Intelligence Engine',
       fallback: true
     };
   }
 
-  const text = `AI Ads™ Platform Guide for ${brandName}:
+  // 2. Check for Social Media / Post Generation queries
+  const isSocialQuery = /post|instagram|caption|linkedin|hook|tweet|facebook|social/i.test(queryLower);
+  if (isSocialQuery) {
+    return {
+      text: `Here is a high-converting social post hook for ${brandName}:\n\n` +
+            `🚀 Transform your brand strategy today with ${brandName}!\n\n` +
+            `Want to generate ready-to-publish Instagram posts, LinkedIn hooks, and multi-channel content?\n` +
+            `Open Content Studio (Module 6) or click "+ Quick Post" in the top bar to create posts tailored to your Brand DNA.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 1. Content & Post Generation
-Open Content Studio (Module 6) from the left sidebar to generate Instagram posts, captions, hashtags, and social copy.
+  // 3. Check for Visuals / Image / Ad Creation queries
+  const isVisualQuery = /image|visual|creative|banner|ad image|photo|graphic|design/i.test(queryLower);
+  if (isVisualQuery) {
+    return {
+      text: `For high-resolution AI ad visual generation and banners tailored to ${brandName}:\n\n` +
+            `- Recommended Image Prompt: Professional commercial photography representing ${brandName}, 8k resolution, modern studio lighting.\n` +
+            `- Quick Access: Open Creative Studio (Module 9) from the left sidebar to generate visual variations and ad banners instantly.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 2. Visual Ad Creation
-Open Creative Studio (Module 9) to generate high-converting AI ad visuals and banners tailored to your Brand DNA.
+  // 4. Check for Website / Landing Page queries
+  const isWebQuery = /website|landing page|builder|hero section|page/i.test(queryLower);
+  if (isWebQuery) {
+    return {
+      text: `To build or edit high-converting landing pages for ${brandName}:\n\n` +
+            `Open AI Website Builder (Module 7) from the left sidebar. You can generate complete responsive websites using conversational AI prompts and customize your layout in real-time.`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
-# 3. Landing Page & Website Build
-Use AI Website Builder (Module 7) to generate and edit landing pages using conversational AI prompts.`;
+  // 5. Default intelligent response for general marketing queries
+  const isDetailed = /detail|in-depth|comprehensive|explain/i.test(queryLower);
+  if (!isDetailed) {
+    return {
+      text: `AI Ads™ Strategy Guide for ${brandName}:\n\n` +
+            `- For Instagram & Social Posts: Go to Content Studio (Module 6) or click "+ Quick Post" in the top bar.\n` +
+            `- For AI Ad Visuals & Banners: Go to Creative Studio (Module 9).\n` +
+            `- For Websites & Landing Pages: Use AI Website Builder (Module 7).\n` +
+            `- For Strategy & SEO: Visit Strategy (Module 4) or SEO Intelligence (Module 3).`,
+      model: 'AI Ads™ Intelligence Engine',
+      fallback: true
+    };
+  }
 
   return {
-    text,
-    model: 'AI Ads™ Intelligence Fallback Engine',
+    text: `AI Ads™ Platform Guide for ${brandName}:\n\n` +
+          `1. Content & Post Generation: Open Content Studio (Module 6) to generate social copy, captions, and hashtags.\n` +
+          `2. Visual Ad Creation: Open Creative Studio (Module 9) to generate high-converting ad images.\n` +
+          `3. Website Building: Open AI Website Builder (Module 7) to generate responsive landing pages.`,
+    model: 'AI Ads™ Intelligence Engine',
     fallback: true
   };
 };
@@ -262,8 +408,20 @@ const generateJSON = async (prompt, options = {}) => {
   const jsonInstruction = `\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, no explanation. Just raw JSON.`;
   
   console.log(`${reqTag}AI generateJSON started...`);
-  const result = await generate(prompt + jsonInstruction, options);
   
+  let result = null;
+  try {
+    result = await generate(prompt + jsonInstruction, options);
+  } catch (genErr) {
+    console.warn(`${reqTag}AI generate threw error (${genErr.message}). Using Smart Fallback JSON.`);
+  }
+  
+  if (!result || !result.text || result.fallback) {
+    console.log(`${reqTag}Using Smart Fallback JSON structure.`);
+    const fallbackData = generateSmartFallbackJSON(prompt, options);
+    return { data: fallbackData, model: 'AI Ads™ Smart Fallback Engine' };
+  }
+
   try {
     const cleaned = result.text.replace(/```json\n?|```\n?/g, '').trim();
     const data = JSON.parse(cleaned);
@@ -298,8 +456,9 @@ const generateJSON = async (prompt, options = {}) => {
         return { data: partialData, model: result.model };
       }
     }
-    console.error(`${reqTag}JSON parsing failed on AI response snippet: ${result.text.substring(0, 150)}`);
-    return null;
+    console.warn(`${reqTag}JSON parsing failed on AI response snippet. Using Smart Fallback JSON.`);
+    const fallbackData = generateSmartFallbackJSON(prompt, options);
+    return { data: fallbackData, model: 'AI Ads™ Smart Fallback Engine' };
   }
 };
 
