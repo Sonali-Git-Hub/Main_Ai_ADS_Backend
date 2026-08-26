@@ -1367,12 +1367,10 @@ app.post('/api/creative/visual/generate', async (req, res) => {
     if (!deduction.success) return res.status(400).json(deduction);
 
     const cleanPrompt = (prompt || 'Modern product marketing visual').trim();
-    const seed = Math.floor(Math.random() * 1000000);
-    const dimensions = aspect === '16:9' ? 'width=1280&height=720' : aspect === '9:16' ? 'width=720&height=1280' : 'width=1024&height=1024';
 
-    // High-Precision AI Image Generation (Flux / SDXL Engine) matching the exact prompt
-    const enhancedPrompt = `${cleanPrompt}, ${style} style, 8k resolution, photorealistic studio photography, highly detailed, masterwork`;
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?${dimensions}&nologo=true&seed=${seed}`;
+    // High-Precision Commercial Stock Photo Resolution via Pexels Engine
+    const pexelsService = require('./services/pexelsService');
+    const imageUrl = await pexelsService.getSinglePhotoUrl(cleanPrompt);
 
     const generatedAsset = {
       id: `asset_${Date.now()}`,

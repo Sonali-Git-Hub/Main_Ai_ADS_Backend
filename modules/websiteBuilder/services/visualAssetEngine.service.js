@@ -417,18 +417,6 @@ function generateOrFetchCandidate(assetSpec, attemptIndex = 0, tracker = new Set
   const pool = CURATED_DOMAIN_ASSETS[domain] || CURATED_DOMAIN_ASSETS.GENERAL_COMMERCE;
   const targetSubject = (assetSpec.requestedSubject || assetSpec.itemName || assetSpec.imagePrompt || assetSpec.businessType || '').trim();
 
-  // Dynamic Pexels Engine photo resolution for accurate prompt matching
-  if (targetSubject.length > 2) {
-    const cleanSubject = encodeURIComponent(`${targetSubject} photography studio HD`.trim());
-    const seed = (attemptIndex + 1) * 999;
-    const candidateUrl = `https://image.pollinations.ai/prompt/${cleanSubject}?width=1200&height=800&nologo=true&seed=${seed}`;
-    return {
-      candidateUrl,
-      source: 'PEXELS_DYNAMIC_ENGINE',
-      seed: attemptIndex
-    };
-  }
-
   // Score each candidate by keyword overlap with the requested item/section subject
   const scoredPool = pool.map(item => {
     let score = 0;
