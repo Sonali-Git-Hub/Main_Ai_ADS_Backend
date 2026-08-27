@@ -1,10 +1,13 @@
 const { scrapeBrandWebsite, formatCleanSpacedBrandName } = require('./brandScraper.service');
 const { classifyBrandCategory } = require('./brandProcessor.service');
+const { runBrandDnaMasterAgent } = require('../brandDnaAgent');
 const aiService = require('../../services/aiService');
 
 async function generateBrandDNA(domainUrl, brandNameOverride = '', documentUploadData = null) {
+  // Delegate execution to Master Brand DNA Agent Orchestrator Subsystem
+  const masterAgentResult = await runBrandDnaMasterAgent(domainUrl, brandNameOverride);
   const scrapedData = await scrapeBrandWebsite(domainUrl, brandNameOverride);
-  const brandName = formatCleanSpacedBrandName(scrapedData.brandName);
+  const brandName = masterAgentResult.brandName.value;
 
   const categoryDetails = classifyBrandCategory(
     scrapedData.domainName,
@@ -121,36 +124,37 @@ Return ONLY a raw valid JSON object with NO markdown formatting:
     ? { value: aiEnrichedData.coreProductsServices, sourceType: 'AI_INFERENCE', confidence: 0.80, evidence: 'Extracted from page product headings' }
     : { value: [], sourceType: 'UNKNOWN', confidence: 0, evidence: 'No product headings found' };
 
-  const formattedBrandName = formatCleanSpacedBrandName(categoryDetails.companyName?.value || scrapedData.brandName || brandName);
+  const formattedBrandName = masterAgentResult.brandName?.value || formatCleanSpacedBrandName(categoryDetails.companyName?.value || scrapedData.brandName || brandName);
 
   const dnaResult = {
     brandName: formattedBrandName,
     companyName: formattedBrandName,
-    parentCompany: categoryDetails.parentCompany?.value || formattedBrandName,
+    parentCompany: masterAgentResult.parentCompany?.value || formattedBrandName,
     domainUrl: scrapedData.cleanUrl,
+    logoUrl: masterAgentResult.logoUrl || scrapedData.logoUrl || scrapedData.faviconUrl || '',
 
-    // Provenance Fields
-    industry: indObj.value,
-    industryCategory: indObj.value,
-    primaryIndustry: indObj,
-    industryProvenance: indObj,
-    secondaryIndustries: categoryDetails.secondaryIndustries || [],
+    // Provenance & Master Agent Audited Fields
+    industry: masterAgentResult.industryCategory?.value || indObj.value,
+    industryCategory: masterAgentResult.industryCategory?.value || indObj.value,
+    primaryIndustry: masterAgentResult.industryCategory || indObj,
+    industryProvenance: masterAgentResult.industryCategory || indObj,
+    secondaryIndustries: masterAgentResult.secondaryIndustries || categoryDetails.secondaryIndustries || [],
 
     subIndustry: categoryDetails.subIndustry?.value || null,
     subIndustryProvenance: categoryDetails.subIndustry || { value: null, sourceType: 'UNKNOWN', confidence: 0 },
 
-    businessType: bTypeObj.value,
-    businessTypeProvenance: bTypeObj,
+    businessType: masterAgentResult.businessType?.value || bTypeObj.value,
+    businessTypeProvenance: masterAgentResult.businessType || bTypeObj,
 
-    headquarters: hqObj.value,
-    headquartersProvenance: hqObj,
+    headquarters: masterAgentResult.headquarters?.value || hqObj.value,
+    headquartersProvenance: masterAgentResult.headquarters || hqObj,
     locations: categoryDetails.locations || [],
 
-    companyDescription: descObj.value,
-    companyDescriptionProvenance: descObj,
+    companyDescription: masterAgentResult.companyDescription?.value || descObj.value,
+    companyDescriptionProvenance: masterAgentResult.companyDescription || descObj,
 
-    tagline: tagObj.value,
-    taglineProvenance: tagObj,
+    tagline: masterAgentResult.tagline?.value || tagObj.value,
+    taglineProvenance: masterAgentResult.tagline || tagObj,
 
     missionStatement: missionObj.value,
     missionStatementProvenance: missionObj,
@@ -158,30 +162,46 @@ Return ONLY a raw valid JSON object with NO markdown formatting:
     vision: visionObj.value,
     visionProvenance: visionObj,
 
-    targetAudience: targetAudienceObj.value,
+    targetAudience: masterAgentResult.targetDemographics || targetAudienceObj.value,
     targetAudienceProvenance: targetAudienceObj,
 
-    coreProductsServices: productsObj.value,
-    coreProductsServicesProvenance: productsObj,
+    coreProductsServices: (masterAgentResult.coreProducts && masterAgentResult.coreProducts.length > 0) ? masterAgentResult.coreProducts : (productsObj.value || []),
+    coreProductsServicesProvenance: (masterAgentResult.coreProducts && masterAgentResult.coreProducts.length > 0)
+      ? { value: masterAgentResult.coreProducts, sourceType: 'WEBSITE_DOM', confidence: 0.90, evidence: 'Extracted product categories from nav menu & headings' }
+      : productsObj,
 
-    brandVoiceTone: aiEnrichedData?.brandVoiceTone || { formalityScore: 3, toneKeywords: ['Professional', 'Authoritative'] },
+    buyerPersonas: masterAgentResult.buyerPersonas || [],
+    brandVoice: masterAgentResult.brandVoice?.value || 'Professional & Customer-Centric',
+    voiceAttributes: masterAgentResult.voiceAttributes || [],
+    brandPromises: masterAgentResult.brandPromises || [],
+    doWords: masterAgentResult.doWords || [],
+    dontWords: masterAgentResult.dontWords || [],
+    corePainPoints: masterAgentResult.corePainPoints || [],
+    buyingTriggers: masterAgentResult.buyingTriggers || [],
+    commonObjections: masterAgentResult.commonObjections || [],
+    validationReport: masterAgentResult.validationReport || null,
+
+    brandVoiceTone: {
+      formalityScore: 3,
+      toneKeywords: masterAgentResult.voiceAttributes || ['Professional', 'Authoritative']
+    },
     contentPillars: aiEnrichedData?.contentPillars || [],
     competitorLandscape: aiEnrichedData?.competitorLandscape || [],
 
     fieldSources: {
-      tagline: tagObj.sourceType,
-      headquarters: hqObj.sourceType,
-      industryCategory: indObj.sourceType,
+      tagline: masterAgentResult.tagline?.sourceType || tagObj.sourceType,
+      headquarters: masterAgentResult.headquarters?.sourceType || hqObj.sourceType,
+      industryCategory: masterAgentResult.industryCategory?.sourceType || indObj.sourceType,
       subIndustry: categoryDetails.subIndustry?.sourceType || 'UNKNOWN',
-      businessType: bTypeObj.sourceType,
-      companyDescription: descObj.sourceType,
+      businessType: masterAgentResult.businessType?.sourceType || bTypeObj.sourceType,
+      companyDescription: masterAgentResult.companyDescription?.sourceType || descObj.sourceType,
       missionStatement: missionObj.sourceType,
       vision: visionObj.sourceType,
       targetAudience: targetAudienceObj.sourceType,
       coreProductsServices: productsObj.sourceType
     },
 
-    brandColors: (scrapedData.brandColors && scrapedData.brandColors.length >= 2) ? scrapedData.brandColors : categoryDetails.brandColors,
+    brandColors: (masterAgentResult.brandColors && masterAgentResult.brandColors.length >= 2) ? masterAgentResult.brandColors : (scrapedData.brandColors || categoryDetails.brandColors),
     approvedClaims: (scrapedData.headings && scrapedData.headings.length > 0)
       ? scrapedData.headings.slice(0, 3).map(h => ({ claimText: h, sourceUrl: scrapedData.cleanUrl, verified: true }))
       : [],
@@ -190,16 +210,16 @@ Return ONLY a raw valid JSON object with NO markdown formatting:
     socialMediaPresence: scrapedData.socialPlatforms,
     faviconUrl: scrapedData.faviconUrl,
     contactInfo: {
-      email: scrapedData.emails?.[0] || null,
-      phone: scrapedData.phones?.[0] || null,
-      location: hqObj.value || null
+      email: masterAgentResult.contactInfo?.value?.email || scrapedData.emails?.[0] || null,
+      phone: masterAgentResult.contactInfo?.value?.phone || scrapedData.phones?.[0] || null,
+      location: masterAgentResult.headquarters?.value || hqObj.value || null
     },
 
     crawledSources: scrapedData.crawledSources,
-    confidenceScore: indObj.value && hqObj.value ? 95 : 70
+    confidenceScore: masterAgentResult.industryCategory?.value ? 95 : 70
   };
 
-  console.log(`✅ [BRAND-DNA] Setup Complete for "${brandName}"! (Industry: ${indObj.value} [${indObj.sourceType}], HQ: ${hqObj.value} [${hqObj.sourceType}])\n`);
+  console.log(`✅ [BRAND-DNA] Setup Complete for "${formattedBrandName}"! (Industry: ${dnaResult.industryCategory} [${dnaResult.industryProvenance?.sourceType}], HQ: ${dnaResult.headquarters} [${dnaResult.headquartersProvenance?.sourceType}])\n`);
   return dnaResult;
 }
 

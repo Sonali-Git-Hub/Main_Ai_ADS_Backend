@@ -159,15 +159,18 @@ function classifyPrimaryAndSecondaryIndustry(domainName, brandName, metaDescript
     });
   }
 
-  // 2. Generic Dynamic Pattern Weight Scorer
+  // 2. Generic Dynamic Pattern Weight Scorer (Domain-Agnostic Universal Taxonomy)
   const patternRules = [
-    { category: 'Consumer Electronics & Hardware', weight: 88, regex: /\b(laptops|desktops|printers|monitors|hardware|smartphones|tablets|pcs|consumer electronics|electronics|iphone|ipad|macbook|mac|apple watch)\b/i },
-    { category: 'Software & Technology Platform', weight: 85, regex: /\b(operating system|cloud computing|enterprise software|developer tools|saas|software solutions|cloud software|windows|azure|copilot|microsoft 365)\b/i },
-    { category: 'Beauty, Salon & Spa Services', weight: 88, regex: /\b(beauty|salon|spa|beauticians|makeup|makeup artist|beauty services|wellness|parlor|hair salon|nail salon|skincare|cosmetics|sunscreen|serums|dermatology|hair care|haircare|hair styling|styling products)\b/i },
-    { category: 'Sportswear, Apparel & Footwear', weight: 85, regex: /\b(athletic footwear|sportswear|sneakers|apparel|activewear|footwear|athletic apparel)\b/i },
-    { category: 'Clean Beauty & Skincare', weight: 85, regex: /\b(skincare|clean beauty|cosmetics|sunscreen|serums|beauty brand|dermatology)\b/i },
-    { category: 'E-Commerce & Retail Platform', weight: 85, regex: /\b(e-commerce platform|commerce platform|merchant platform|storefront builder|online store software)\b/i },
-    { category: 'Financial Services & Digital Payments', weight: 40, regex: /\b(financial services|payment gateway|merchant processing|banking platform)\b/i }
+    { category: 'Outdoor Gear, Apparel & Sporting Goods', weight: 90, regex: /\b(outdoor|gear|apparel|clothing|climbing|surfing|skiing|hiking|trail running|footwear|wetsuits|jackets|fleece|sporting goods|activewear|silent sports|mountaineering)\b/i },
+    { category: 'Apparel, Fashion & Accessories', weight: 88, regex: /\b(clothing|apparel|fashion|garments|shirts|pants|dresses|footwear|outerwear|jackets|jeans|accessories|menswear|womenswear)\b/i },
+    { category: 'Beauty, Cosmetics & Personal Care', weight: 88, regex: /\b(beauty|salon|spa|beauticians|makeup|makeup artist|skincare|cosmetics|sunscreen|serums|dermatology|haircare|hair care|grooming|perfume|fragrance)\b/i },
+    { category: 'Consumer Electronics & Hardware', weight: 88, regex: /\b(laptops|desktops|printers|monitors|hardware|smartphones|tablets|pcs|consumer electronics|electronics|audio|headphones)\b/i },
+    { category: 'Software & Cloud Technology', weight: 85, regex: /\b(operating system|cloud computing|enterprise software|developer tools|saas|software solutions|cloud software|analytics|api|developer)\b/i },
+    { category: 'Food, Beverage & Nutrition', weight: 85, regex: /\b(food|beverage|dining|cafe|coffee|tea|snacks|nutrition|grocery|organic|restaurant)\b/i },
+    { category: 'Health, Medical & Wellness', weight: 85, regex: /\b(health|healthcare|medical|pharma|clinic|fitness|gym|supplements|wellness|hospital)\b/i },
+    { category: 'Financial Services & Fintech', weight: 85, regex: /\b(banking|finance|fintech|investments|insurance|payments|loans|wealth management)\b/i },
+    { category: 'Home, Furniture & Living', weight: 85, regex: /\b(furniture|decor|home goods|interior design|bedding|kitchenware|appliances)\b/i },
+    { category: 'E-Commerce & Retail Platform', weight: 82, regex: /\b(e-commerce|online store|marketplace|retail|merchant|storefront)\b/i }
   ];
 
   for (const rule of patternRules) {
@@ -243,7 +246,7 @@ function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
 
   const isB2BEnterprise = /enterprise solutions|corporate purchasing|volume licensing|commercial sales|wholesale distribution|b2b portal|business accounts/i.test(combinedText);
   const isB2BSaaS = /software-as-a-service|saas platform|cloud subscription|developer api|subscription pricing|free trial/i.test(combinedText);
-  const isD2CCheckout = /official online store|direct-to-consumer|shop online|d2c brand|cart|checkout/i.test(combinedText);
+  const isD2CCheckout = /official online store|direct-to-consumer|shop online|d2c brand|cart|checkout|add to cart|buy now|\b(shop|store|buy|products|bestsellers|free shipping|combos|skincare|haircare|grooming|gear|apparel|wetsuits|jackets|fleece)\b/i.test(combinedText);
   const isConsumerApp = /download app|on-demand|food delivery|consumer app|salon|clinic|gym|school/i.test(combinedText);
 
   if (isB2BEnterprise) {
@@ -253,7 +256,7 @@ function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
     signals.push({ signal: 'SaaS subscription & API documentation signals', sourceUrl: rawUrl, snippet: 'Matched pricing/trial/API docs' });
   }
   if (isD2CCheckout) {
-    signals.push({ signal: 'E-commerce storefront & checkout cart signals', sourceUrl: rawUrl, snippet: 'Matched add to cart/checkout buttons' });
+    signals.push({ signal: 'E-commerce storefront & checkout cart signals', sourceUrl: rawUrl, snippet: 'Matched e-commerce shopping & product signals' });
   }
   if (isConsumerApp) {
     signals.push({ signal: 'Consumer app & on-demand service signals', sourceUrl: rawUrl, snippet: 'Matched consumer app download' });
@@ -268,7 +271,7 @@ function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
   }
 
   if (isD2CCheckout) {
-    types.push('D2C E-Commerce');
+    types.push('D2C E-Commerce Brand');
   } else if (isConsumerApp) {
     types.push('B2C Consumer Platform');
   }
@@ -287,12 +290,12 @@ function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
   }
 
   return {
-    value: types.length === 1 ? types[0] : types,
+    value: types[0],
     sourceType: 'WEBSITE_DOM',
     sourceUrl: rawUrl,
     evidence: signals,
     method: 'MULTI_SIGNAL_CONSENSUS_ANALYSIS',
-    confidence: signals.length >= 2 ? 0.91 : 0.75
+    confidence: 0.85
   };
 }
 
@@ -320,7 +323,9 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
     'tata': 'Mumbai, Maharashtra, India',
     'zebronics': 'Chennai, Tamil Nadu, India',
     'jio': 'Mumbai, Maharashtra, India',
-    'boat': 'Mumbai, Maharashtra, India'
+    'boat': 'Mumbai, Maharashtra, India',
+    'patagonia.com': 'Ventura, California, USA',
+    'aveda.com': 'Blaine, Minnesota, USA'
   };
 
   const candidateLocations = [];
@@ -374,6 +379,27 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
         method: 'CONTACT_DOM_ADDRESS_PARSER',
         confidence: 0.88
       });
+    }
+  }
+
+  // Priority 4: City/State/Country Location Pattern Matcher in Deep Context Text
+  if (candidateLocations.length === 0 && combinedText) {
+    const locMatch = combinedText.match(/(?:headquartered in|based in|corporate office in|located in|registered office in|headquarters in|office in)[\s:]+([A-Z][a-zA-Z\s,.]{3,35})/i) ||
+                     combinedText.match(/\b(Ventura,\s*California|Ventura,\s*CA|Santa Barbara,\s*CA|San Francisco,\s*CA|Los Angeles,\s*CA|Seattle,\s*WA|Austin,\s*TX|New York,\s*NY|Chicago,\s*IL|Boston,\s*MA|London,\s*UK|Paris,\s*France|Tokyo,\s*Japan|Toronto,\s*Canada|Sydney,\s*Australia|Mumbai,\s*India|Delhi,\s*India|Bengaluru,\s*India|Ahmedabad,\s*Gujarat)\b/i);
+
+    if (locMatch && (locMatch[1] || locMatch[0])) {
+      const matchedStr = (locMatch[1] || locMatch[0]).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').split('.')[0].trim();
+      if (matchedStr.length >= 3 && !/looking|feel free|welcome|click|call|services|our|booking|appointment|team/i.test(matchedStr)) {
+        candidateLocations.push({
+          value: matchedStr,
+          type: 'HEADQUARTERS',
+          sourceType: 'WEBSITE_DOM',
+          sourceUrl: rawUrl,
+          evidence: `Extracted location from website evidence: "${matchedStr}"`,
+          method: 'LOCATION_PATTERN_MATCHER',
+          confidence: 0.85
+        });
+      }
     }
   }
 

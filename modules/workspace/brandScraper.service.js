@@ -252,68 +252,99 @@ async function extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl
 }
 
 async function crawlBrandContext(cleanUrl, $) {
-  const internalPages = [];
+  const internalPagesMap = new Map();
   const crawledTexts = [];
   let aboutPageHeadings = [];
   let aboutPageText = '';
   let contactPageText = '';
   let pressKitText = '';
+  let navCategories = [];
 
-  if (!$) return { internalPages, deepContextText: '', aboutPageHeadings: [], aboutPageText: '', contactPageText: '', pressKitText: '' };
+  if (!$) return { internalPages: [], deepContextText: '', aboutPageHeadings: [], aboutPageText: '', contactPageText: '', pressKitText: '', navCategories: [] };
 
   const baseUrl = new URL(cleanUrl);
-  const priorityPatterns = [/about/i, /who-we-are/i, /our-story/i, /company/i, /contact/i, /press/i, /media/i, /newsroom/i, /brand/i, /locations/i, /offices/i, /privacy/i, /terms/i];
 
-  $('a[href]').each((i, el) => {
+  // Extract navigation menu category anchors
+  const categoryFilter = /cart|checkout|login|account|privacy|terms|cookie|search|help|sign in|contact|about|press|order|location|store|bag|my cart|menu/i;
+  $('nav a[href], header a[href], .nav a[href], div[class*="menu" i] a[href], div[class*="nav" i] a[href]').each((_, el) => {
+    const text = $(el).text().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (text && text.length > 2 && text.length < 35 && !categoryFilter.test(text) && !navCategories.includes(text)) {
+      navCategories.push(text);
+    }
+  });
+
+  // Generic Link Scoring System (Domain-Agnostic Keyword Weights)
+  $('a[href]').each((_, el) => {
     const href = $(el).attr('href');
     if (!href) return;
 
     try {
       const fullUrl = href.startsWith('http') ? new URL(href) : new URL(href, cleanUrl);
       if (fullUrl.hostname === baseUrl.hostname) {
-        const path = fullUrl.pathname;
-        if (priorityPatterns.some(pattern => pattern.test(path)) && !internalPages.includes(fullUrl.href)) {
-          internalPages.push(fullUrl.href);
+        const path = fullUrl.pathname.toLowerCase();
+        const fullHref = fullUrl.origin + fullUrl.pathname; // Strip query params for deduplication
+
+        if (fullHref === cleanUrl.replace(/\/$/, '') || fullHref === cleanUrl.replace(/\/$/, '') + '/') return;
+
+        let score = 0;
+        if (/about|who-we-are|our-story|company|our-reason|footprint|mission|values|history/i.test(path)) score += 10;
+        if (/contact|reach-us|support|help|locations|offices|headquarters|stores|contact-us/i.test(path)) score += 9;
+        if (/press|media|newsroom|faq|corporate|info|aboutus/i.test(path)) score += 6;
+        if (/shop|collections|products|catalog|services|categories/i.test(path)) score += 4;
+
+        // Apply negative penalty for tracking params or utility links
+        if (/utm_|campaign|cart|checkout|login|register|lang=/i.test(href)) score -= 8;
+
+        if (score > 0) {
+          const currentBest = internalPagesMap.get(fullHref) || 0;
+          if (score > currentBest) {
+            internalPagesMap.set(fullHref, score);
+          }
         }
       }
     } catch (e) {}
   });
 
-  // If no contact/about links found in DOM, probe common endpoints
-  const hasContactLink = internalPages.some(p => /contact|locations|offices|headquarters/i.test(p));
-  if (!hasContactLink) {
-    try {
-      internalPages.push(`${cleanUrl.replace(/\/$/, '')}/contact-us`);
-      internalPages.push(`${cleanUrl.replace(/\/$/, '')}/about-us`);
-      internalPages.push(`${cleanUrl.replace(/\/$/, '')}/press`);
-    } catch (e) {}
+  // Fallback probe endpoints if map is small
+  if (internalPagesMap.size < 2) {
+    const base = cleanUrl.replace(/\/$/, '');
+    internalPagesMap.set(`${base}/about`, 8);
+    internalPagesMap.set(`${base}/about-us`, 8);
+    internalPagesMap.set(`${base}/contact`, 8);
+    internalPagesMap.set(`${base}/contact-us`, 8);
+    internalPagesMap.set(`${base}/help`, 6);
   }
 
-  // Crawl up to 3 key internal pages (optimized for speed)
-  const selectedPages = internalPages.slice(0, 3);
+  // Sort links descending by score and pick top 5 distinct URLs
+  const sortedPages = Array.from(internalPagesMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(entry => entry[0]);
 
-  // Concurrently fetch all internal pages
+  const selectedPages = Array.from(new Set(sortedPages)).slice(0, 5);
+
+  // Concurrently fetch top 5 ranked internal pages
   await Promise.all(selectedPages.map(async (pageUrl) => {
     try {
-      const isAboutPage = /about|who-we-are|our-story|company/i.test(pageUrl);
-      const isContactPage = /contact|locations|offices|headquarters/i.test(pageUrl);
-      const isPressPage = /press|media|newsroom|brand/i.test(pageUrl);
+      const isAboutPage = /about|who-we-are|our-story|company|footprint|mission|values|reason/i.test(pageUrl);
+      const isContactPage = /contact|locations|offices|headquarters|support|help|stores/i.test(pageUrl);
+      const isPressPage = /press|media|newsroom|brand|corporate|faq/i.test(pageUrl);
 
       const response = await axios.get(pageUrl, {
-        timeout: 4000,
+        timeout: 5000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9'
         }
       });
-      const page$ = cheerio.load(response.data);
 
-      page$('script, style, iframe, noscript').remove();
+      const page$ = cheerio.load(response.data);
+      page$('script, style, iframe, noscript, svg').remove();
+
       const pageHeadings = [];
       const uiFilter = /cart|checkout|subtotal|shipping|sign in|login|register|cookie|account|wishlist|quick view|filter by|sort by|your cart is empty|empty cart|my cart|search products|add to cart/i;
 
-      page$('h1, h2, h3').each((i, el) => {
+      page$('h1, h2, h3').each((_, el) => {
         const txt = page$(el).text().trim();
         if (txt.length > 5 && txt.length < 150 && !uiFilter.test(txt)) {
           pageHeadings.push(txt);
@@ -321,20 +352,20 @@ async function crawlBrandContext(cleanUrl, $) {
       });
 
       const pageParagraphs = [];
-      page$('p, article, section, address, div[class*="address"], div[class*="office"], div[class*="contact"]').each((i, el) => {
+      page$('p, article, section, address, div[class*="address"], div[class*="office"], div[class*="contact"], footer').each((_, el) => {
         const txt = page$(el).text().trim();
-        if (txt.length > 15 && txt.length < 600) pageParagraphs.push(txt);
+        if (txt.length > 15 && txt.length < 800) pageParagraphs.push(txt);
       });
 
       if (isAboutPage) {
         aboutPageHeadings = [...aboutPageHeadings, ...pageHeadings];
         if (pageParagraphs.length > 0) {
-          aboutPageText += (aboutPageText ? ' ' : '') + pageParagraphs.slice(0, 8).join(' ');
+          aboutPageText += (aboutPageText ? ' ' : '') + pageParagraphs.slice(0, 10).join(' ');
         }
       }
 
       if (isContactPage && pageParagraphs.length > 0) {
-        contactPageText += (contactPageText ? ' ' : '') + pageParagraphs.slice(0, 10).join(' ');
+        contactPageText += (contactPageText ? ' ' : '') + pageParagraphs.slice(0, 12).join(' ');
       }
 
       if (isPressPage && pageParagraphs.length > 0) {
@@ -342,7 +373,7 @@ async function crawlBrandContext(cleanUrl, $) {
       }
 
       if (pageHeadings.length > 0 || pageParagraphs.length > 0) {
-        crawledTexts.push(`[Page URL: ${pageUrl}]\nHeadings: ${pageHeadings.join(' | ')}\nContent: ${pageParagraphs.slice(0, 10).join(' ')}`);
+        crawledTexts.push(`[Page URL: ${pageUrl}]\nHeadings: ${pageHeadings.join(' | ')}\nContent: ${pageParagraphs.slice(0, 12).join(' ')}`);
       }
     } catch (e) {}
   }));
@@ -353,7 +384,8 @@ async function crawlBrandContext(cleanUrl, $) {
     aboutPageHeadings,
     aboutPageText,
     contactPageText,
-    pressKitText
+    pressKitText,
+    navCategories: navCategories.slice(0, 15)
   };
 }
 
@@ -565,6 +597,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let aboutPageText = '';
   let contactPageText = '';
   let pressKitText = '';
+  let navCategories = [];
   let brandColors = [];
 
   const crawlPromise = $ ? crawlBrandContext(cleanUrl, $) : Promise.resolve({ internalPages: [] });
@@ -578,6 +611,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     aboutPageText = deepData.aboutPageText || '';
     contactPageText = deepData.contactPageText || '';
     pressKitText = deepData.pressKitText || '';
+    navCategories = deepData.navCategories || [];
     if (deepData.internalPages && deepData.internalPages.length > 0) {
       crawledSources.push('INTERNAL_ABOUT_PAGES');
       console.log(`📄 [SCRAPER] Discovered & Parsed ${deepData.internalPages.length} Internal Pages (${deepData.internalPages.join(', ')})`);
@@ -610,6 +644,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     aboutPageText,
     contactPageText,
     pressKitText,
+    navCategories: deepData?.navCategories || [],
     brandColors,
     socialPlatforms,
     emails,

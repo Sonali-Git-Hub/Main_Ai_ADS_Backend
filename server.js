@@ -1,3 +1,4 @@
+// AI Ads Enterprise Server - gcloud ADC Auth Reloaded
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -490,7 +491,7 @@ app.post('/api/workspace/scrape-preview', async (req, res) => {
       companyName: brandDna.companyName || brandDna.brandName,
       parentCompany: brandDna.parentCompany || brandDna.brandName,
       domainUrl: brandDna.domainUrl || domainUrl,
-      logoUrl: brandDna.faviconUrl || '',
+      logoUrl: brandDna.logoUrl || brandDna.faviconUrl || '',
       brandColors: brandDna.brandColors || [],
       industry: brandDna.industryCategory || null,
       industryCategory: brandDna.industryCategory || null,
