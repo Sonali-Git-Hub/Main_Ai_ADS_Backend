@@ -62,13 +62,50 @@ async function generateSeoBrief(params) {
 
 async function generateSocialPosts(params) {
   const { topic, platform = 'LinkedIn', brandName = 'AI Ads' } = params;
+  const cleanBrand = brandName || 'Brand';
+  const platLower = (platform || 'instagram').toLowerCase();
+  const aspect = platLower === 'instagram' ? '1:1' : (platLower.includes('reel') || platLower.includes('tiktok') || platLower.includes('story')) ? '9:16' : '16:9';
+  const dimensions = aspect === '9:16' ? 'width=720&height=1280' : aspect === '16:9' ? 'width=1280&height=720' : 'width=1024&height=1024';
+  const seed = Math.floor(Math.random() * 1000000);
+  const imagePrompt = `${topic} — ${cleanBrand} commercial campaign photography, high-end studio lighting, 8k resolution, photorealistic`;
+  
+  let imageUrl = '';
+  try {
+    const { resolveBrandVisualAsset } = require('../../services/brandVisualResolver');
+    imageUrl = resolveBrandVisualAsset({
+      prompt: imagePrompt,
+      brandName: cleanBrand,
+      topic,
+      style: 'Photorealistic Commercial',
+      aspect
+    });
+  } catch (e) {
+    imageUrl = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80';
+  }
+
   return {
     platform,
     topic,
     hook: `🚀 Stop wasting 5 days per content batch. Here is how ${brandName} scaled content operations without sacrificing brand voice.`,
+    shortCaption: `Scale your ${brandName} velocity with AI-driven content strategy!`,
     caption: `Most marketing teams suffer from fragmented software and delayed approvals. By standardizing Brand DNA memory and unifying research, strategy, and publishing, high-velocity teams achieve 4x execution speed.\n\nKey takeaways:\n1️⃣ Establish single-source brand memory\n2️⃣ Automate claim verification\n3️⃣ Repurpose 1 approved asset into 5 channels\n\nWhat is your biggest workflow bottleneck right now? Let's discuss in the comments below! 👇`,
+    longCaption: `Discover how consistent brand DNA elevates your marketing output for ${brandName}. Whether you are running social campaigns, newsletters, or ad copy, maintaining a unified tone is essential for building trust and scaling conversions. Start leveraging AI Ads today to automate your workflow without sacrificing brand quality!`,
     hashtags: [`#${brandName.replace(/\s+/g, '')}`, `#MarketingOps`, `#SEOStrategy`, `#ContentVelocity`, `#B2BGrowth`],
     cta: `Book your enterprise strategy demo today at link in bio!`,
+    imagePrompt,
+    imageUrl,
+    imageStyle: 'Photorealistic Commercial',
+    imageAspect: aspect,
+    creativeVariations: [
+      {
+        type: 'STORYTELLING ANGLE',
+        text: `Every brand has a unique journey. For ${brandName}, maintaining a consistent narrative across every touchpoint is what builds lasting customer trust.`
+      },
+      {
+        type: 'PROBLEM-SOLUTION',
+        text: `Tired of fragmented content creation? Unify your strategy and creative workflows with ${brandName} to scale 4x faster without losing brand voice.`
+      }
+    ],
     carouselSlides: [
       { slide: 1, title: "The Content Bottleneck", text: "Why 80% of agency teams lose momentum during human review cycles." },
       { slide: 2, title: "Brand DNA Memory", text: "Anchor every AI draft to immutable voice, approved claims, and style rules." },

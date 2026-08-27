@@ -1417,6 +1417,60 @@ app.get('/api/pexels/search', async (req, res) => {
   }
 });
 
+// ─── AI Creative Visual Asset Generation Endpoint ───
+app.post('/api/creative/visual/generate', async (req, res) => {
+  try {
+    const {
+      workspaceId,
+      prompt,
+      topic,
+      hook,
+      brand,
+      brandName,
+      brandColors,
+      industry,
+      tagline,
+      companyDescription,
+      platform,
+      style,
+      aspect,
+      seed
+    } = req.body;
+
+    const { generateBrandAdImage } = require('./services/brandImageAgent.service');
+    const visualRes = await generateBrandAdImage({
+      workspaceId,
+      brandName: brandName || brand || 'Brand',
+      brandColors,
+      industry,
+      tagline,
+      companyDescription,
+      topic: topic || hook || prompt || 'Commercial Brand Campaign',
+      postType: 'image',
+      platform: platform || 'instagram',
+      style: style || 'Photorealistic Commercial',
+      aspect: aspect || (platform === 'linkedin' ? '16:9' : (platform === 'story' || platform === 'reel' || platform === 'tiktok') ? '9:16' : '1:1'),
+      seed
+    });
+
+    return res.json({
+      success: true,
+      asset: {
+        imageUrl: visualRes.imageUrl,
+        imagePrompt: visualRes.imagePrompt,
+        brand: visualRes.brandName,
+        style: visualRes.imageStyle,
+        aspect: visualRes.imageAspect,
+        engine: visualRes.engine,
+        svgFallback: visualRes.svgFallback
+      }
+    });
+  } catch (err) {
+    console.error('[/api/creative/visual/generate] Error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/calendar/entries', async (req, res) => {
   try {
     const dbEntries = await Calendar.find().sort({ createdAt: -1 });

@@ -108,6 +108,37 @@ Return JSON with exact keys:
 
     if (!postData) return res.status(500).json({ success: false, error: 'Generation failed' });
 
+    // Generate Brand-DNA-aligned AI ad image via Brand DNA Visual Agent
+    const cleanBrand = brandName || 'Brand';
+    const platLower = (platform || 'instagram').toLowerCase();
+    const aspect = platLower === 'instagram' ? '1:1' : (platLower.includes('reel') || platLower.includes('tiktok') || platLower.includes('story')) ? '9:16' : '16:9';
+
+    try {
+      const { generateBrandAdImage } = require('../services/brandImageAgent.service');
+      const visualRes = await generateBrandAdImage({
+        workspaceId,
+        brandName: cleanBrand,
+        topic,
+        postType,
+        platform,
+        style: 'Photorealistic Commercial',
+        aspect
+      });
+      postData.imageUrl = visualRes.imageUrl;
+      postData.gcsPath = visualRes.gcsPath;
+      postData.imagePrompt = visualRes.imagePrompt;
+      postData.imageStyle = visualRes.imageStyle || 'Photorealistic Commercial';
+      postData.imageAspect = visualRes.imageAspect || aspect;
+      postData.svgFallback = visualRes.svgFallback;
+      postData.engine = visualRes.engine;
+    } catch (e) {
+      console.warn('[ContentController] BrandImageAgent fallback note:', e.message);
+      postData.imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(topic + ', ' + cleanBrand + ' commercial photography, 8k')}?width=1024&height=1024&nologo=true`;
+      postData.imagePrompt = `${topic} — ${cleanBrand} commercial advertising photography, 8k`;
+      postData.imageStyle = 'Photorealistic Commercial';
+      postData.imageAspect = aspect;
+    }
+
     // Save to Content collection
     try {
       await Content.create({

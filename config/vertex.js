@@ -4,9 +4,11 @@ const fs = require('fs');
 
 const projectId = process.env.GCP_PROJECT_ID || 'ai-mall-484810';
 const location = process.env.GCP_LOCATION || 'asia-south1';
+const globalLocation = process.env.GCP_GLOBAL_LOCATION || 'global';
 const keyFilePath = path.join(__dirname, '../google_cloud_credentials.json');
 
 let aiClient = null;
+let globalAiClient = null;
 let useVertexAI = false;
 
 if (fs.existsSync(keyFilePath)) {
@@ -21,6 +23,7 @@ if (apiKey && apiKey !== 'your_gemini_api_key_here') {
   delete process.env.GOOGLE_GENAI_USE_VERTEXAI;
   try {
     aiClient = new GoogleGenAI({ apiKey });
+    globalAiClient = aiClient;
     useVertexAI = false;
     console.log('✅ @google/genai initialized using direct Gemini API key');
   } catch (err) {
@@ -34,8 +37,13 @@ if (apiKey && apiKey !== 'your_gemini_api_key_here') {
       project: projectId,
       location: location,
     });
+    globalAiClient = new GoogleGenAI({
+      vertexAI: true,
+      project: projectId,
+      location: globalLocation,
+    });
     useVertexAI = true;
-    console.log(`✅ @google/genai Vertex AI (ADC) initialized for project "${projectId}" in region "${location}"`);
+    console.log(`✅ @google/genai Vertex AI (ADC) initialized for project "${projectId}" (regional: ${location}, global: ${globalLocation})`);
   } catch (err) {
     console.warn('⚠️ Vertex AI init note:', err.message);
   }
@@ -43,7 +51,10 @@ if (apiKey && apiKey !== 'your_gemini_api_key_here') {
 
 module.exports = {
   aiClient,
+  globalAiClient,
   useVertexAI,
   projectId,
   location,
+  globalLocation,
 };
+
