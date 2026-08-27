@@ -181,7 +181,13 @@ Return ONLY a raw valid JSON object with NO markdown formatting:
       coreProductsServices: productsObj.sourceType
     },
 
-    brandColors: (scrapedData.brandColors && scrapedData.brandColors.length >= 2) ? scrapedData.brandColors : categoryDetails.brandColors,
+    brandColors: (scrapedData.brandColors && scrapedData.brandColors.length >= 2)
+      ? scrapedData.brandColors
+      : (aiEnrichedData?.brandColors && Array.isArray(aiEnrichedData.brandColors) && aiEnrichedData.brandColors.length >= 2)
+        ? aiEnrichedData.brandColors
+        : (categoryDetails.brandColors && categoryDetails.brandColors.length >= 2)
+          ? categoryDetails.brandColors
+          : ['#6366F1', '#8B5CF6', '#06B6D4', '#0F172A'],
     approvedClaims: (scrapedData.headings && scrapedData.headings.length > 0)
       ? scrapedData.headings.slice(0, 3).map(h => ({ claimText: h, sourceUrl: scrapedData.cleanUrl, verified: true }))
       : [],
