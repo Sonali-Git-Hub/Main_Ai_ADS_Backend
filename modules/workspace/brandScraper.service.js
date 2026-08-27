@@ -53,12 +53,21 @@ async function extractLogoPixelColors(logoUrl) {
 
 function formatCleanSpacedBrandName(str) {
   if (!str || typeof str !== 'string') return 'Brand Workspace';
-  let clean = str.replace(/^(https?:\/\/)?(www\d*|m|store|shop|en-in|in|us|uk)\./i, '');
-  clean = clean.split('.')[0].split('/')[0];
-  clean = clean.replace(/[-_]/g, ' ').trim();
+
+  let clean = str.trim();
+  if (clean.includes('/') || clean.toLowerCase().startsWith('http') || /\.(com|in|org|net|io|ai|co\.in|store|shop)\b/i.test(clean)) {
+    clean = clean.replace(/^(https?:\/\/)?(www\d*|m|store|shop|en-in)\./i, '');
+    clean = clean.split('/')[0];
+    clean = clean.replace(/\.(com|in|co\.in|org|net|io|ai|app|store|shop|biz|info|us|uk)$/i, '');
+    clean = clean.replace(/[-_]/g, ' ').trim();
+  }
 
   // Special Known Brands Dictionary
   const BRAND_MAP = {
+    'uspoloassn': 'U.S. Polo Assn.',
+    'u.s. polo assn. india': 'U.S. Polo Assn. India',
+    'u.s. polo assn.': 'U.S. Polo Assn.',
+    'u s polo assn': 'U.S. Polo Assn.',
     'airtel': 'Airtel',
     'swiggy': 'Swiggy',
     'crocs': 'Crocs',
@@ -291,8 +300,12 @@ async function crawlBrandContext(cleanUrl, $) {
       const isPressPage = /press|media|newsroom|brand/i.test(pageUrl);
 
       const response = await axios.get(pageUrl, {
-        timeout: 3000,
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        timeout: 4000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
       });
       const page$ = cheerio.load(response.data);
 
@@ -359,6 +372,16 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     domainName = cleanUrl.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
   }
 
+  // Auto TLD completion if missing (e.g. https://www.motorola -> https://www.motorola.com)
+  if (domainName && !/\.[a-z]{2,}$/i.test(domainName)) {
+    cleanUrl = cleanUrl.replace(/\/$/, '') + '.com';
+    try {
+      domainName = new URL(cleanUrl).hostname;
+    } catch (e) {
+      domainName = domainName + '.com';
+    }
+  }
+
   const brandName = extractCleanBrandName(domainName, brandNameOverride);
 
   console.log(`\n🌐 [SCRAPER] 🚀 Initiating Live Web Scrape & Brand DNA Setup for: ${cleanUrl} (${brandName})`);
@@ -367,21 +390,29 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let $ = null;
   let crawledSources = ['WEBSITE_HOMEPAGE'];
 
-  // STEP 1: Fast HTTP Fetch & Anti-Bot Bypass
+  // STEP 1: Fast HTTP Fetch with Full Chrome Browser Headers
   try {
     const response = await axios.get(cleanUrl, {
       timeout: 8000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
       }
     });
     html = response.data;
     $ = cheerio.load(html);
     console.log(`📡 [SCRAPER] Step 1: Live Homepage HTTP Fetch Successful (200 OK)`);
   } catch (err) {
-    console.log(`🛡️ [SCRAPER] Step 1: Anti-Bot/Network Notice (${err.message}). Triggering Tavily AI Web Engine...`);
+    console.log(`🛡️ [SCRAPER] Direct HTTP blocked (${err.message}). Switching to secondary web fetcher...`);
     const tavilyExtract = await extractTavilyUrl(cleanUrl);
     if (tavilyExtract && tavilyExtract.rawContent) {
       html = tavilyExtract.rawContent;
@@ -426,10 +457,9 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     }
 
     if (!parsedLogo) {
-      parsedLogo = $('meta[property="og:image"]').attr('content') ||
-                   $('header img[src*="logo"]').attr('src') ||
-                   $('img[class*="logo"]').attr('src') ||
-                   $('img[alt*="logo"]').attr('src');
+      parsedLogo = $('header img[src*="logo" i], nav img[src*="logo" i], img[class*="logo" i], img[id*="logo" i], img[alt*="logo" i]').first().attr('src') ||
+                   $('link[rel="apple-touch-icon"], link[rel*="icon"]').first().attr('href') ||
+                   googleFaviconUrl;
     }
 
     logoText = $('header .logo-text, .brand-logo span, a[class*="logo"] span, #logo span, .logo-tagline').first().text().trim();
@@ -466,6 +496,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
 
   let metaTitle = '';
   let metaDescription = '';
+  let ogSiteName = '';
   let headings = [];
   let socialPlatforms = schemaSameAs || [];
   let emails = [];
@@ -473,19 +504,24 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let hqAddress = '';
 
   if ($) {
+    // Clean scripts, styles, iframe, code, and svg before text extraction
+    const $clean = cheerio.load(html);
+    $clean('script, style, noscript, svg, iframe, code').remove();
+
     metaTitle = $('title').text().trim() || $('meta[property="og:title"]').attr('content') || '';
     metaDescription = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content') || '';
+    ogSiteName = $('meta[property="og:site_name"]').attr('content') || $('meta[name="og:site_name"]').attr('content') || '';
 
     const uiFilter = /cart|checkout|subtotal|shipping|sign in|login|register|cookie|privacy|terms|account|wishlist|quick view|filter by|sort by|your cart is empty|empty cart|my cart|search products|add to cart/i;
-    $('h1, h2, h3').each((i, el) => {
-      const text = $(el).text().trim();
+    $clean('h1, h2, h3').each((i, el) => {
+      const text = $clean(el).text().trim();
       if (text && text.length > 5 && text.length < 120 && !uiFilter.test(text) && !headings.includes(text)) {
         headings.push(text);
       }
     });
 
-    $('a[href]').each((i, el) => {
-      const href = $(el).attr('href') || '';
+    $clean('a[href]').each((i, el) => {
+      const href = $clean(el).attr('href') || '';
       if (/facebook\.com/i.test(href) && !socialPlatforms.includes('Facebook')) socialPlatforms.push('Facebook');
       if (/instagram\.com/i.test(href) && !socialPlatforms.includes('Instagram')) socialPlatforms.push('Instagram');
       if (/linkedin\.com/i.test(href) && !socialPlatforms.includes('LinkedIn')) socialPlatforms.push('LinkedIn');
@@ -494,27 +530,31 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
 
       if (href.startsWith('mailto:')) {
         const email = href.replace('mailto:', '').split('?')[0].trim();
-        if (email && !emails.includes(email)) emails.push(email);
+        if (email && email.includes('@') && !emails.includes(email)) emails.push(email);
       }
       if (href.startsWith('tel:')) {
-        const phone = href.replace('tel:', '').trim().replace(/^\++/, '+');
-        if (phone && !phones.includes(phone)) phones.push(phone);
+        const rawPhone = href.replace('tel:', '').trim();
+        const validP = filterValidPhoneNumber(rawPhone);
+        if (validP && !phones.includes(validP)) phones.push(validP);
       }
     });
 
-    // Extract official toll-free / helpline phone numbers & HQ Location from body text
-    const pageText = $.text() || '';
-    const phoneMatches = pageText.match(/(?:1800[-\s]?\d{3}[-\s]?\d{4}|\+?91[-\s]?\d{10}|\+?1[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4})/gi) || [];
+    // Extract official toll-free / helpline phone numbers & HQ Location from cleaned body text
+    const cleanBodyText = $clean('body').text().replace(/\s+/g, ' ') || '';
+    const phoneMatches = cleanBodyText.match(/(?:\+?91[-\s]?\d{10}|\+?1[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|1800[-\s]?\d{3}[-\s]?\d{4})/gi) || [];
     phoneMatches.forEach(p => {
-      const cleanP = p.trim().replace(/^\++/, '+');
-      if (cleanP && cleanP.length >= 10 && !phones.includes(cleanP)) {
-        phones.push(cleanP);
+      const validP = filterValidPhoneNumber(p);
+      if (validP && !phones.includes(validP)) {
+        phones.push(validP);
       }
     });
 
-    const hqMatch = pageText.match(/(?:headquarters|registered office|corporate office|address|based in|located in|h\.o\.)[\s:]+([A-Z][a-zA-Z\s,.-]{5,60})/i);
+    const hqMatch = cleanBodyText.match(/(?:headquarters|registered office|corporate office|based in|located in)[\s:]+([A-Z][a-zA-Z\s,.]{3,40})/i);
     if (hqMatch && hqMatch[1]) {
-      hqAddress = hqMatch[1].trim().split('\n')[0].slice(0, 50);
+      const candidateHQ = hqMatch[1].trim().split('.')[0].trim();
+      if (candidateHQ.length >= 3 && !/looking|feel free|welcome|click|call|services|our|booking/i.test(candidateHQ)) {
+        hqAddress = candidateHQ;
+      }
     }
   }
 
@@ -552,6 +592,8 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     cleanUrl,
     domainName,
     brandName: schemaName || brandName,
+    schemaName,
+    ogSiteName,
     schemaSlogan,
     schemaIndustry,
     schemaAddress,
@@ -579,6 +621,22 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
 
 }
 
+function filterValidPhoneNumber(str) {
+  if (!str || typeof str !== 'string') return null;
+  const clean = str.trim().replace(/[^\d+]/g, '');
+  // Reject dummy template numbers: +1 234 567 890, 1234567890, 0000000000, 9999999999, 14285714286
+  if (/^(\+?1)?1234567890$/i.test(clean)) return null;
+  if (/^(\+?1)?234567890\d?$/i.test(clean)) return null;
+  if (/^0+$/i.test(clean) || /^9+$/i.test(clean) || /^142857/i.test(clean)) return null;
+  
+  // Must be between 10 and 14 digits
+  const digitsOnly = clean.replace(/\D/g, '');
+  if (digitsOnly.length >= 10 && digitsOnly.length <= 14) {
+    return str.trim();
+  }
+  return null;
+}
+
 module.exports = {
   scrapeBrandWebsite,
   extractCleanBrandName,
@@ -587,5 +645,6 @@ module.exports = {
   crawlBrandContext,
   generateDynamicBrandPalette,
   extractLogoPixelColors,
-  extractSchemaJsonLd
+  extractSchemaJsonLd,
+  filterValidPhoneNumber
 };

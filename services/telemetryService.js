@@ -142,8 +142,26 @@ function getEventHistory(limit = 100, filterType = null) {
   return list.slice(-limit);
 }
 
+/**
+ * Retrieves aggregate error statistics from recorded telemetry events
+ */
+function getErrorStats() {
+  const errorEvents = eventHistory.filter(e => e.eventType === 'ERROR' || e.status === 'ERROR');
+  const total = errorEvents.length;
+  const totalEvents = eventHistory.length;
+  const rate = totalEvents > 0 ? ((total / totalEvents) * 100).toFixed(1) : '0.0';
+
+  return {
+    totalErrors: total,
+    errorRate: `${rate}%`,
+    chatErrors: errorEvents.filter(e => e.component === 'ChatController' || e.page === '/chat').length,
+    generalErrors: errorEvents.filter(e => e.component !== 'ChatController' && e.page !== '/chat').length,
+  };
+}
+
 module.exports = {
   recordTelemetryEvent,
   registerSseClient,
-  getEventHistory
+  getEventHistory,
+  getErrorStats,
 };

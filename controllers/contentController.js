@@ -8,6 +8,29 @@ const Content = require('../models/Content');
 
 const Workspace = require('../models/Workspace');
 
+// ─── POST /api/content/save-asset ─────────────────────────────────────────────
+exports.saveAsset = async (req, res) => {
+  try {
+    const assetData = req.body;
+    let savedContent = null;
+    try {
+      if (assetData && (assetData.name || assetData.url)) {
+        savedContent = await Content.create({
+          workspaceId: assetData.workspaceId,
+          type: assetData.type || 'DOCUMENT',
+          title: assetData.name || 'Brand Asset',
+          body: assetData.content || assetData.url || '',
+          metadata: assetData.metadata || {}
+        });
+      }
+    } catch (dbErr) {}
+
+    res.json({ success: true, asset: savedContent || assetData });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 // ─── Helper: Get brand context ────────────────────────────────────────────────
 const getBrandContext = async (workspaceId, directBrandName = '') => {
   let context = '';

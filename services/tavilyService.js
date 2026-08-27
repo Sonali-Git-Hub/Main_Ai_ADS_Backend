@@ -1,8 +1,17 @@
 const axios = require('axios');
 
+function isValidTavilyKey(apiKey) {
+  if (!apiKey || typeof apiKey !== 'string') return false;
+  const clean = apiKey.trim();
+  if (clean.length < 15 || clean.includes('your_tavily') || clean.includes('your_key') || clean.startsWith('tvly-your')) {
+    return false;
+  }
+  return true;
+}
+
 async function searchTavily(query, searchDepth = 'advanced', maxResults = 5) {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey || apiKey.includes('your_tavily_key')) {
+  if (!isValidTavilyKey(apiKey)) {
     return null;
   }
 
@@ -36,7 +45,7 @@ async function searchTavily(query, searchDepth = 'advanced', maxResults = 5) {
 
 async function extractTavilyUrl(url) {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey || apiKey.includes('your_tavily_key')) {
+  if (!isValidTavilyKey(apiKey)) {
     return null;
   }
 

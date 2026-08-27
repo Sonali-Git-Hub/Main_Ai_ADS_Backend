@@ -181,6 +181,12 @@ exports.deleteCampaign = async (req, res) => {
 // request body, it is used directly to map topics/platforms/pillars per date.
 exports.generateCampaignPlan = async (req, res) => {
   try {
+    try {
+      require('../services/telemetryService').recordTelemetryEvent({
+        source: 'USER', eventType: 'USER_ACTION', component: 'CampaignEngine', action: 'GENERATE_CALENDAR', page: '/calendar'
+      });
+    } catch (e) {}
+
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ success: false, error: 'Campaign not found' });
 
