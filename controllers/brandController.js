@@ -80,6 +80,92 @@ const scrapeBrandUrl = async (url) => {
   }
 };
 
+// ─── Centralized Preview → BrandProfile Persistence Mapper ───────────────────
+function mapPreviewToBrandProfile(brandDna, workspaceId) {
+  const finalBrandName = brandDna.brandName || brandDna.companyName || 'Brand Workspace';
+  const websiteUrl = brandDna.domainUrl || brandDna.website || '';
+
+  return {
+    workspaceId: workspaceId ? workspaceId.toString() : '',
+    companyName: finalBrandName,
+    brandName: finalBrandName,
+    parentCompany: brandDna.parentCompany || null,
+    parentCompanyProvenance: brandDna.parentCompanyProvenance || null,
+    website: websiteUrl,
+    domainUrl: websiteUrl,
+    logoUrl: brandDna.logoUrl || brandDna.faviconUrl || '',
+    brandColors: brandDna.brandColors || [],
+    brandColorsProvenance: brandDna.brandColorsProvenance || null,
+    industryCategory: brandDna.industryCategory || brandDna.industry || null,
+    industryProvenance: brandDna.industryProvenance || null,
+    secondaryIndustries: brandDna.secondaryIndustries || [],
+    businessType: brandDna.businessType || null,
+    businessTypeProvenance: brandDna.businessTypeProvenance || null,
+    headquarters: brandDna.headquarters || null,
+    headquartersProvenance: brandDna.headquartersProvenance || null,
+    companyDescription: brandDna.companyDescription || '',
+    companyDescriptionProvenance: brandDna.companyDescriptionProvenance || null,
+    tagline: brandDna.tagline || null,
+    taglineProvenance: brandDna.taglineProvenance || null,
+    missionStatement: brandDna.missionStatement || null,
+    missionStatementProvenance: brandDna.missionStatementProvenance || null,
+    vision: brandDna.vision || null,
+    visionProvenance: brandDna.visionProvenance || null,
+    targetAudience: brandDna.targetAudience || [],
+    targetAudienceProvenance: brandDna.targetAudienceProvenance || null,
+    coreProductsServices: brandDna.coreProductsServices || [],
+    coreProductsServicesProvenance: brandDna.coreProductsServicesProvenance || null,
+    contentPillars: brandDna.contentPillars || [],
+    brandValues: brandDna.brandValues || [],
+    dosAndDonts: brandDna.dosAndDonts || {
+      dos: brandDna.doWords || (brandDna.dosAndDonts?.dos || []),
+      donts: brandDna.dontWords || (brandDna.dosAndDonts?.donts || [])
+    },
+    doWords: brandDna.doWords || (brandDna.dosAndDonts?.dos || []),
+    dontWords: brandDna.dontWords || (brandDna.dosAndDonts?.donts || []),
+    brandVoice: {
+      tone: brandDna.brandVoiceTone?.toneKeywords?.join(', ') || brandDna.brandVoice || 'Professional & Authoritative',
+      dos: brandDna.doWords || (brandDna.dosAndDonts?.dos || []),
+      donts: brandDna.dontWords || (brandDna.dosAndDonts?.donts || [])
+    },
+    brandVoiceTone: brandDna.brandVoiceTone || null,
+    contactInfo: brandDna.contactInfo || null,
+    contactInfoProvenance: brandDna.contactInfoProvenance || null,
+    extractedBrandSummary: brandDna.companyDescription || '',
+    structuredIdentity: {
+      brand_name: finalBrandName,
+      industry: brandDna.industryCategory || null,
+      target_audience: Array.isArray(brandDna.targetAudience) ? brandDna.targetAudience.join(', ') : (brandDna.targetAudience || ''),
+      tone: brandDna.brandVoiceTone?.toneKeywords?.join(', ') || 'Professional & Authoritative',
+      products_services: brandDna.coreProductsServices || [],
+      brand_values: brandDna.brandValues || [],
+      content_angles: brandDna.contentPillars || [],
+      color_palette: brandDna.brandColors || [],
+      goal: brandDna.tagline || brandDna.missionStatement || null,
+      mission_statement: brandDna.missionStatement || null,
+      tagline: brandDna.tagline || null,
+    },
+    aiConfidence: brandDna.confidenceScore || 85,
+    companyInformation: {
+      name: finalBrandName,
+      website: websiteUrl,
+      headquarters: brandDna.headquarters || null,
+      parentCompany: brandDna.parentCompany || null
+    },
+    brandIdentity: {
+      tagline: brandDna.tagline || null,
+      mission: brandDna.missionStatement || null,
+      vision: brandDna.vision || null
+    },
+    products: { list: brandDna.coreProductsServices || [] },
+    competitors: { list: brandDna.competitorLandscape || [] },
+    extractedClaims: brandDna.extractedClaims || [],
+    approvedClaims: brandDna.approvedClaims || [],
+    pagesEvidence: brandDna.pagesEvidence || [],
+    analysisStatus: brandDna.analysisStatus || 'SUCCESS'
+  };
+}
+
 // ─── POST /api/brand/analyze ──────────────────────────────────────────────────
 exports.analyzeBrand = async (req, res) => {
   try {
@@ -96,47 +182,7 @@ exports.analyzeBrand = async (req, res) => {
     console.log(`[Brand Intelligence] Running Evidence-First Brand DNA analysis for: ${websiteUrl}`);
     const brandDna = await generateBrandDNA(websiteUrl, companyName || '');
 
-    const finalBrandName = brandDna.brandName || companyName || 'Brand Workspace';
-
-    // Update or create BrandProfile with strict evidence model
-    const brandData = {
-      workspaceId,
-      companyName: finalBrandName,
-      website: websiteUrl,
-      logoUrl: brandDna.logoUrl || '',
-      brandColors: brandDna.brandColors || [],
-      extractedBrandSummary: brandDna.companyDescription || '',
-      structuredIdentity: {
-        brand_name: finalBrandName,
-        industry: brandDna.industryCategory || null,
-        target_audience: brandDna.targetAudience || [],
-        tone: brandDna.brandVoiceTone?.toneKeywords?.join(', ') || 'Professional & Authoritative',
-        products_services: brandDna.coreProductsServices || [],
-        brand_values: brandDna.brandValues || [],
-        content_angles: brandDna.contentPillars || [],
-        color_palette: brandDna.brandColors || [],
-        goal: brandDna.tagline || brandDna.missionStatement || null,
-        mission_statement: brandDna.missionStatement || null,
-        tagline: brandDna.tagline || null,
-      },
-      aiConfidence: brandDna.confidenceScore || 85,
-      companyInformation: {
-        name: finalBrandName,
-        website: websiteUrl,
-        headquarters: brandDna.headquarters || null,
-        parentCompany: brandDna.parentCompany || null
-      },
-      brandIdentity: {
-        tagline: brandDna.tagline || null,
-        mission: brandDna.missionStatement || null,
-        vision: brandDna.vision || null
-      },
-      products: { list: brandDna.coreProductsServices || [] },
-      competitors: { list: brandDna.competitorLandscape || [] },
-      extractedClaims: brandDna.extractedClaims || [],
-      approvedClaims: brandDna.approvedClaims || [],
-      analysisStatus: brandDna.analysisStatus || 'SUCCESS'
-    };
+    const brandData = mapPreviewToBrandProfile(brandDna, workspaceId);
 
     delete brandData._id;
     delete brandData.__v;
@@ -303,3 +349,5 @@ Return a JSON object with the relevant data.`;
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+module.exports.mapPreviewToBrandProfile = mapPreviewToBrandProfile;

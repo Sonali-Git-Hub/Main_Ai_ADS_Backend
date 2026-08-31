@@ -14,6 +14,7 @@ const Calendar = require('./models/Calendar');
 const Campaign = require('./models/Campaign');
 const CampaignPost = require('./models/CampaignPost');
 const BrandProfile = require('./models/BrandProfile');
+const { mapPreviewToBrandProfile } = require('./controllers/brandController');
 const ChatSession = require('./models/ChatSession');
 const User = require('./models/User');
 const GeneratedPost = require('./models/GeneratedPost');
@@ -563,51 +564,47 @@ app.post('/api/workspace/save-dna', async (req, res) => {
 
     const cleanEmail = (workspaceData.userEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
 
-    const dbPayload = {
+    // 1. Lightweight Workspace Navigation Container (Ownership: Tenant/Workspace UI metadata ONLY)
+    const workspaceMetadata = {
       userEmail: cleanEmail,
       brandName: workspaceData.brandName || 'New Brand',
-      companyName: workspaceData.companyName || workspaceData.brandName,
-      parentCompany: workspaceData.parentCompany || workspaceData.brandName,
-      domainUrl: workspaceData.domainUrl,
-      logoUrl: workspaceData.logoUrl || workspaceData.faviconUrl,
-      brandColors: workspaceData.brandColors || [],
-      industryCategory: workspaceData.industryCategory || workspaceData.industry || 'Consumer Products',
-      subIndustry: workspaceData.subIndustry || '',
-      businessType: workspaceData.businessType || 'B2C Direct Brand',
-      headquarters: workspaceData.headquarters || '',
-      companyDescription: workspaceData.companyDescription || '',
-      tagline: workspaceData.tagline || '',
-      missionStatement: workspaceData.missionStatement || '',
-      vision: workspaceData.vision || '',
-      targetAudience: workspaceData.targetAudience || [],
-      brandVoiceTone: workspaceData.brandVoiceTone || { formalityScore: 3, toneKeywords: [] },
-      competitorLandscape: workspaceData.competitorLandscape || [],
-      contentPillars: workspaceData.contentPillars || [],
-      socialMediaPresence: workspaceData.socialMediaPresence || {},
-      faviconUrl: workspaceData.faviconUrl || '',
-      contactInfo: workspaceData.contactInfo || {},
-      approvedClaims: (workspaceData.approvedClaims || []).map(c => 
-        typeof c === 'string' ? { claimText: c, sourceUrl: workspaceData.domainUrl, verified: true } : c
-      ),
-      restrictedClaims: workspaceData.restrictedClaims || [],
-      confidenceScore: workspaceData.confidenceScore || 95,
-      isLockSaved: true,
+      domainUrl: workspaceData.domainUrl || '',
+      logoUrl: workspaceData.logoUrl || workspaceData.faviconUrl || '',
       createdAt: new Date().toISOString()
     };
 
-    let savedWorkspace = { id: `ws_${Date.now()}`, ...dbPayload };
-    try {
-      if (mongoose.connection.readyState === 1) {
-        const dbCreated = await Workspace.create(dbPayload);
-        savedWorkspace = dbCreated;
-        console.log(`🔒 Brand DNA Memory Saved for user [${cleanEmail}]: ${savedWorkspace.brandName}`);
-      }
-    } catch (dbErr) {
-      console.log('MongoDB Write Fallback Note:', dbErr.message);
+    let savedWorkspace = null;
+    let savedBrandProfile = null;
+
+    if (mongoose.connection.readyState === 1) {
+      // Step A: Create or update lightweight Workspace container
+      const workspaceDoc = await Workspace.create(workspaceMetadata);
+      const workspaceId = workspaceDoc._id.toString();
+
+      savedWorkspace = workspaceDoc;
+
+      // Step B: Map Preview Brand DNA payload to Canonical BrandProfile schema
+      const brandProfilePayload = mapPreviewToBrandProfile(workspaceData, workspaceId);
+
+      // Step C: Upsert Canonical BrandProfile (Single Ownership Source of Truth)
+      savedBrandProfile = await BrandProfile.findOneAndUpdate(
+        { workspaceId },
+        { $set: brandProfilePayload },
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      );
+
+      console.log(`🔒 Single-Ownership Brand DNA Saved for user [${cleanEmail}]: Workspace [${workspaceId}] -> BrandProfile [${savedBrandProfile.brandName}]`);
+    } else {
+      savedWorkspace = { id: `ws_${Date.now()}`, ...workspaceMetadata };
       memoryWorkspaces.unshift(savedWorkspace);
+      savedBrandProfile = mapPreviewToBrandProfile(workspaceData, savedWorkspace.id);
     }
 
-    res.json({ success: true, workspace: savedWorkspace });
+    res.json({
+      success: true,
+      workspace: savedWorkspace,
+      brandProfile: savedBrandProfile
+    });
   } catch (err) {
     console.log('Save DNA Error:', err.message);
     res.status(500).json({ success: false, error: err.message });
