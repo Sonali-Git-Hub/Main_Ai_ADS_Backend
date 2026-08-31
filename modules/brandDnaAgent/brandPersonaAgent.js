@@ -39,16 +39,31 @@ async function runPersonaAgent(crawlResult) {
 
   console.log(`[PersonaAgent] 👤 Synthesizing Buyer Personas & Target Market for: "${brandName}"`);
 
+  const pageImages = (scrapedMetadata.pagesEvidence || [])
+    .filter(p => p && p.screenshot && p.screenshot.status === 'SUCCESS' && p.screenshot.base64)
+    .map(p => ({
+      url: p.url,
+      pageType: p.pageType || 'PAGE',
+      mimeType: p.screenshot.mimeType || 'image/png',
+      base64: p.screenshot.base64
+    }));
+
+  const hasVisual = pageImages.length > 0;
+  console.log(`[AI-MULTIMODAL] Agent: PersonaAgent | Text evidence: YES | Images attached: ${pageImages.length}`);
+
   const headings = (scrapedMetadata.headings || []).slice(0, 5).join(', ');
   const metaDesc = scrapedMetadata.metaDescription || '';
 
   const prompt = `Synthesize Target Buyer Personas for "${brandName}" (${scrapedMetadata.domainName}):
 Meta Description: "${metaDesc}"
-Key Offerings/Headings: "${headings}"`;
+Key Offerings/Headings: "${headings}"
+${hasVisual ? `\nVISUAL EVIDENCE ATTACHED: Inspect the attached ${pageImages.length} page screenshots to observe product photography, lifestyle imagery, target audience demographics, and visual positioning signals.` : ''}`;
 
   try {
-    const aiRes = await generateJSON(prompt, { systemInstruction: PERSONA_AGENT_PERSONA });
+    const aiRes = await generateJSON(prompt, { systemInstruction: PERSONA_AGENT_PERSONA, images: pageImages });
     const data = aiRes?.data || {};
+
+    const primarySource = hasVisual ? 'WEBSITE_DOM+WEBSITE_SCREENSHOT' : 'AI_SYNTHESIS';
 
     return {
       targetDemographics: data.targetDemographics || { ageRange: '18-50', gender: 'All', geography: 'Global' },
@@ -59,9 +74,9 @@ Key Offerings/Headings: "${headings}"`;
       buyingTriggers: data.buyingTriggers || ['Verified reviews', 'Transparent pricing', 'Fast shipping'],
       commonObjections: data.commonObjections || ['Price comparison', 'Return policy clarity'],
       provenance: {
-        sourceType: 'AI_SYNTHESIS',
+        sourceType: primarySource,
         sourceUrl: rawUrl,
-        evidence: `Synthesized ideal customer persona from brand evidence`,
+        evidence: hasVisual ? `Synthesized target customer persona from text & ${pageImages.length} page screenshots` : `Synthesized ideal customer persona from brand text evidence`,
         confidence: 0.88
       }
     };

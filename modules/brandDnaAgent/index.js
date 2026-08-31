@@ -44,12 +44,14 @@ async function runBrandDnaMasterAgent(targetUrl, seedBrandName = '') {
 
   const draftPayload = {
     brandName: crawlResult.brandNameObj,
-    parentCompany: crawlResult.brandNameObj,
+    parentCompany: crawlResult.parentCompanyObj || { value: null, status: 'UNKNOWN', sourceType: 'UNKNOWN', evidence: 'No explicit parent company found in website evidence', confidence: 0 },
     industryCategory: positioningResult.primaryIndustry,
     secondaryIndustries: positioningResult.secondaryIndustries,
     businessType: positioningResult.businessType,
-    headquarters: crawlResult.hqObj,
+    headquarters: (positioningResult.headquarters?.value ? positioningResult.headquarters : crawlResult.hqObj),
     tagline: positioningResult.tagline,
+    missionStatement: positioningResult.missionStatement,
+    vision: positioningResult.vision,
     contactInfo: crawlResult.contactObj,
     coreProducts: crawlResult.coreProducts || [],
     companyDescription: descObj,
@@ -71,6 +73,8 @@ async function runBrandDnaMasterAgent(targetUrl, seedBrandName = '') {
   // Step 3: Execute Sub-Agent 5 — Brand DNA Validator Agent (Quality & Grounding Audit)
   console.log(`[MASTER-ORCHESTRATOR] 🛡️ Launching Sub-Agent 5 (Brand DNA Validator Agent)...`);
   const finalValidatedPayload = await runValidatorAgent(draftPayload, crawlResult);
+  finalValidatedPayload.scrapedMetadata = crawlResult.scrapedMetadata;
+  finalValidatedPayload.pagesEvidence = crawlResult.scrapedMetadata.pagesEvidence || [];
 
   console.log(`================================================================================`);
   console.log(`✅ [MASTER-ORCHESTRATOR] Pipeline & Audit Complete for "${finalValidatedPayload.brandName.value}"!`);

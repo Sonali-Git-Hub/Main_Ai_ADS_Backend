@@ -29,26 +29,43 @@ async function runVoiceAgent(crawlResult) {
   
   console.log(`[VoiceAgent] 🎙️ Synthesizing Brand Voice & Tone for: "${brandName}"`);
 
+  const pageImages = (scrapedMetadata.pagesEvidence || [])
+    .filter(p => p && p.screenshot && p.screenshot.status === 'SUCCESS' && p.screenshot.base64)
+    .map(p => ({
+      url: p.url,
+      pageType: p.pageType || 'PAGE',
+      mimeType: p.screenshot.mimeType || 'image/png',
+      base64: p.screenshot.base64
+    }));
+
+  const hasVisual = pageImages.length > 0;
+  console.log(`[AI-MULTIMODAL] Agent: VoiceAgent | Text evidence: YES | Images attached: ${pageImages.length}`);
+
   const headings = (scrapedMetadata.headings || []).join('\n- ');
   const metaDesc = scrapedMetadata.metaDescription || '';
   const aboutText = scrapedMetadata.aboutPageText || scrapedMetadata.deepContextText || '';
 
-  const prompt = `Synthesize official Brand Voice for "${brandName}" (Domain: ${scrapedMetadata.domainName}):
+  const prompt = `Synthesize official Brand Voice & Tone for "${brandName}" (Domain: ${scrapedMetadata.domainName}):
 Meta Description: "${metaDesc}"
 Headings:
 - ${headings}
-About Text: "${aboutText.slice(0, 500)}"`;
+About Text: "${aboutText.slice(0, 500)}"
+${hasVisual ? `\nVISUAL EVIDENCE ATTACHED: Inspect the attached ${pageImages.length} rendered page screenshots to analyze typography, visual layout, hero banners, design language, color usage, and visual brand style.` : ''}`;
 
   try {
-    const aiRes = await generateJSON(prompt, { systemInstruction: VOICE_AGENT_PERSONA });
+    const aiRes = await generateJSON(prompt, { systemInstruction: VOICE_AGENT_PERSONA, images: pageImages });
     const data = aiRes?.data || {};
+
+    const primarySource = hasVisual ? 'WEBSITE_DOM+WEBSITE_SCREENSHOT' : 'AI_SYNTHESIS';
 
     return {
       primaryTone: {
         value: data.primaryTone || 'Professional & Customer-Centric',
-        sourceType: 'AI_SYNTHESIS',
+        sourceType: primarySource,
         sourceUrl: rawUrl,
-        evidence: `Synthesized brand tone from homepage evidence & meta description`,
+        evidence: hasVisual
+          ? `Synthesized brand tone from text DOM evidence and ${pageImages.length} page screenshots`
+          : `Synthesized brand tone from homepage evidence & meta description`,
         confidence: 0.90
       },
       voiceAttributes: data.voiceAttributes || ['Professional', 'Modern', 'Trustworthy'],

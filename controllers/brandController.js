@@ -83,133 +83,59 @@ const scrapeBrandUrl = async (url) => {
 // ─── POST /api/brand/analyze ──────────────────────────────────────────────────
 exports.analyzeBrand = async (req, res) => {
   try {
-    const { workspaceId, websiteUrl, companyName, manualDescription, model = 'gemini' } = req.body;
+    const { workspaceId, websiteUrl, companyName } = req.body;
 
     if (!workspaceId) {
       return res.status(400).json({ success: false, error: 'workspaceId is required' });
     }
 
-    let scrapedData = {};
-    if (websiteUrl) {
-      console.log(`[Brand Intelligence] Scraping ${websiteUrl}...`);
-      scrapedData = await scrapeBrandUrl(websiteUrl);
+    if (!websiteUrl) {
+      return res.status(400).json({ success: false, error: 'websiteUrl is required for Brand DNA analysis' });
     }
 
-    const brandInput = manualDescription || scrapedData.bodyText || scrapedData.description || '';
-    
-    // Clean up scraped title to extract clean candidate brand name
-    let cleanCandidate = companyName || '';
-    if (!cleanCandidate && scrapedData.title) {
-      cleanCandidate = scrapedData.title.split('|')[0].split('-')[0].split(':')[0].trim();
-    }
-    const brandName = cleanCandidate || companyName || scrapedData.title || 'Unknown Brand';
+    console.log(`[Brand Intelligence] Running Evidence-First Brand DNA analysis for: ${websiteUrl}`);
+    const brandDna = await generateBrandDNA(websiteUrl, companyName || '');
 
-    if (!brandInput && !websiteUrl) {
-      return res.status(400).json({ success: false, error: 'Provide websiteUrl or manualDescription' });
-    }
+    const finalBrandName = brandDna.brandName || companyName || 'Brand Workspace';
 
-    const prompt = `You are a world-class Brand Identity & Market Intelligence Analyst.
-Analyze the following scraped website data and return a highly accurate Brand Intelligence JSON object.
-
-Website URL: ${websiteUrl || 'Not provided'}
-Raw Page Title: ${scrapedData.title || ''}
-Candidate Brand Name: ${brandName}
-Content Description: ${brandInput.substring(0, 2500)}
-
-CRITICAL INSTRUCTIONS FOR HIGH ACCURACY:
-1. "brand_name": Extract the exact, official, full brand name (e.g. "U.S. Polo Assn.", "Nike", "Apple"). NEVER truncate or shorten multi-word brand names to a single letter like "U" or "A". Preserve standard dots and abbreviations (e.g. "U.S.").
-2. "industry": Determine the precise primary business industry (e.g. "Apparel & Fashion", "Technology & Software", "E-Commerce", "Food & Beverage"). Base this strictly on what the website actually sells. (If the website sells polo shirts, jeans, and apparel, the industry MUST be "Apparel & Fashion", NOT "Telecommunications").
-
-Return a valid JSON object with these exact keys:
-{
-  "brand_name": "Official Full Brand Name",
-  "industry": "Primary Business Industry",
-  "target_audience": "description of primary target audience",
-  "tone": "brand voice tone (e.g. Classic, Premium, Bold, Friendly)",
-  "cta_style": "preferred CTA style",
-  "products_services": ["product1", "product2"],
-  "brand_values": ["value1", "value2"],
-  "content_angles": ["angle1", "angle2"],
-  "color_palette": ["#color1", "#color2"],
-  "platform_focus": ["instagram", "linkedin"],
-  "posting_frequency": "daily",
-  "goal": "main business goal",
-  "mission_statement": "...",
-  "tagline": "...",
-  "competitor_landscape": ["competitor1", "competitor2"],
-  "unique_selling_points": ["usp1", "usp2"],
-  "content_dos": ["do1", "do2"],
-  "content_donts": ["dont1", "dont2"],
-  "ai_confidence": 95
-}`;
-
-    console.log(`[Brand Intelligence] Running AI analysis for "${brandName}"...`);
-    const analysisResult = (await generateJSON(prompt, { model, temperature: 0.3 })) || {};
-
-    // Synthesize rich, accurate brand identity defaults if AI returns sparse fields
-    const finalBrandName = analysisResult.brand_name || brandName || 'Brand Workspace';
-    const finalIndustry = analysisResult.industry || (
-      brandName.toLowerCase().includes('polo') || brandName.toLowerCase().includes('apparel') || brandName.toLowerCase().includes('fashion')
-        ? 'Apparel, Fashion & Retail'
-        : 'Consumer Products & Services'
-    );
-    const finalAudience = analysisResult.target_audience || (
-      `Fashion-conscious consumers and shoppers seeking authentic, high-quality ${finalIndustry} offerings from ${finalBrandName}.`
-    );
-    const finalProducts = (analysisResult.products_services && analysisResult.products_services.length > 0)
-      ? analysisResult.products_services
-      : [
-          `${finalBrandName} Core Collection`,
-          `Premium ${finalIndustry} Offerings`,
-          `Seasonal New Arrivals & Bestsellers`
-        ];
-    const finalPillars = (analysisResult.content_angles && analysisResult.content_angles.length > 0)
-      ? analysisResult.content_angles
-      : [
-          `${finalBrandName} | Official Brand Identity & Heritage`,
-          `Authentic Premium Craftsmanship & Quality`,
-          `Trending Styles & Seasonal Collections`,
-          `Customer Satisfaction & Product Excellence`
-        ];
-    const finalValues = (analysisResult.brand_values && analysisResult.brand_values.length > 0)
-      ? analysisResult.brand_values
-      : ['Authenticity & Heritage', 'Premium Quality', 'Customer Trust'];
-
-    // Update or create BrandProfile
+    // Update or create BrandProfile with strict evidence model
     const brandData = {
       workspaceId,
       companyName: finalBrandName,
-      website: websiteUrl || '',
-      extractedBrandSummary: brandInput.substring(0, 500),
+      website: websiteUrl,
+      logoUrl: brandDna.logoUrl || '',
+      brandColors: brandDna.brandColors || [],
+      extractedBrandSummary: brandDna.companyDescription || '',
       structuredIdentity: {
         brand_name: finalBrandName,
-        industry: finalIndustry,
-        target_audience: finalAudience,
-        tone: analysisResult.tone || 'Classic, Premium & Authoritative',
-        cta_style: analysisResult.cta_style || 'Shop Official Collection',
-        products_services: finalProducts,
-        brand_values: finalValues,
-        content_angles: finalPillars,
-        color_palette: (analysisResult.color_palette && analysisResult.color_palette.length > 0) ? analysisResult.color_palette : ['#0F172A', '#2563EB'],
-        platform_focus: analysisResult.platform_focus || ['instagram', 'linkedin'],
-        posting_frequency: analysisResult.posting_frequency || 'daily',
-        goal: analysisResult.goal || `Drive official online sales and engagement for ${finalBrandName}`,
-        mission_statement: analysisResult.mission_statement || `To deliver exceptional ${finalIndustry} quality and style to customers worldwide.`,
-        tagline: analysisResult.tagline || `${finalBrandName} | Official Heritage & Style`,
+        industry: brandDna.industryCategory || null,
+        target_audience: brandDna.targetAudience || [],
+        tone: brandDna.brandVoiceTone?.toneKeywords?.join(', ') || 'Professional & Authoritative',
+        products_services: brandDna.coreProductsServices || [],
+        brand_values: brandDna.brandValues || [],
+        content_angles: brandDna.contentPillars || [],
+        color_palette: brandDna.brandColors || [],
+        goal: brandDna.tagline || brandDna.missionStatement || null,
+        mission_statement: brandDna.missionStatement || null,
+        tagline: brandDna.tagline || null,
       },
-      socialMediaLinks: scrapedData.socialLinks || {},
-      brandColors: (analysisResult.color_palette && analysisResult.color_palette.length > 0) ? analysisResult.color_palette : ['#0F172A', '#2563EB'],
-      logoUrl: scrapedData.favicon || '',
-      aiConfidence: analysisResult.ai_confidence || 88,
-      // Intelligence sections
-      companyInformation: { name: finalBrandName, website: websiteUrl, description: brandInput.substring(0, 300) },
-      brandIdentity: { tone: analysisResult.tone || 'Classic & Premium', tagline: analysisResult.tagline, mission: analysisResult.mission_statement },
-      brandPersonality: { values: finalValues, usps: analysisResult.unique_selling_points || [analysisResult.tagline, `Authentic ${finalIndustry} quality`] },
-      brandVoice: { style: analysisResult.tone || 'Classic & Premium', dos: analysisResult.content_dos || [`Highlight ${finalBrandName} quality`], donts: analysisResult.content_donts || ['Avoid unverified claims'] },
-      targetAudienceSection: { description: finalAudience },
-      products: { list: finalProducts },
-      contentStrategy: { angles: finalPillars, goal: analysisResult.goal || `Grow ${finalBrandName} audience`, platforms: analysisResult.platform_focus || ['instagram', 'linkedin'] },
-      competitors: { list: analysisResult.competitor_landscape || [] },
+      aiConfidence: brandDna.confidenceScore || 85,
+      companyInformation: {
+        name: finalBrandName,
+        website: websiteUrl,
+        headquarters: brandDna.headquarters || null,
+        parentCompany: brandDna.parentCompany || null
+      },
+      brandIdentity: {
+        tagline: brandDna.tagline || null,
+        mission: brandDna.missionStatement || null,
+        vision: brandDna.vision || null
+      },
+      products: { list: brandDna.coreProductsServices || [] },
+      competitors: { list: brandDna.competitorLandscape || [] },
+      extractedClaims: brandDna.extractedClaims || [],
+      approvedClaims: brandDna.approvedClaims || [],
+      analysisStatus: brandDna.analysisStatus || 'SUCCESS'
     };
 
     delete brandData._id;
@@ -229,24 +155,23 @@ Return a valid JSON object with these exact keys:
     // Also update workspace if valid ObjectId
     if (mongoose.Types.ObjectId.isValid(workspaceId)) {
       await Workspace.findByIdAndUpdate(workspaceId, {
-        brandName: brandName,
-        faviconUrl: scrapedData.favicon || '',
-        brandColors: analysisResult.color_palette || [],
-        targetAudience: analysisResult.target_audience || '',
-        brandVoiceTone: analysisResult.tone || '',
-        contentPillars: analysisResult.content_angles || [],
-        missionStatement: analysisResult.mission_statement || '',
-        tagline: analysisResult.tagline || '',
-        industryCategory: analysisResult.industry || '',
+        brandName: finalBrandName,
+        faviconUrl: brandDna.logoUrl || '',
+        brandColors: brandDna.brandColors || [],
+        targetAudience: brandDna.targetAudience || [],
+        missionStatement: brandDna.missionStatement || null,
+        tagline: brandDna.tagline || null,
+        industryCategory: brandDna.industryCategory || null,
+        headquarters: brandDna.headquarters || null,
+        parentCompany: brandDna.parentCompany || null
       });
     }
 
-    console.log(`✅ Brand Intelligence Analysis Complete: "${brandName}" (confidence: ${analysisResult.ai_confidence}%)`);
+    console.log(`✅ Evidence-First Brand Intelligence Analysis Complete: "${finalBrandName}" (status: ${brandDna.analysisStatus})`);
     res.json({
       success: true,
       profile,
-      analysis: analysisResult,
-      scrapedData: { title: scrapedData.title, favicon: scrapedData.favicon, socialLinks: scrapedData.socialLinks },
+      brandDna
     });
   } catch (err) {
     console.error('[Brand Intelligence] Error:', err.message);

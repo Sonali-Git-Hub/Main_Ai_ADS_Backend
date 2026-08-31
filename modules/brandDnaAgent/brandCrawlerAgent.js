@@ -7,7 +7,7 @@
  */
 
 const { scrapeBrandWebsite } = require('../workspace/brandScraper.service');
-const { resolveBrandName, resolveHeadquartersAndLocations, resolveContactInformation } = require('../workspace/brandProcessor.service');
+const { resolveBrandName, resolveHeadquartersAndLocations, resolveContactInformation, classifySemanticCandidates } = require('../workspace/brandProcessor.service');
 const { recordTelemetryEvent } = require('../../services/telemetryService');
 
 async function runCrawlerAgent(targetUrl, seedBrandName = '') {
@@ -31,32 +31,26 @@ async function runCrawlerAgent(targetUrl, seedBrandName = '') {
   const hqObj = resolveHeadquartersAndLocations(domainName, brandNameObj.value.toLowerCase(), scrapedMetadata, combinedText, rawUrl);
   const contactObj = resolveContactInformation(scrapedMetadata, rawUrl);
 
-  let coreProducts = (scrapedMetadata.navCategories && scrapedMetadata.navCategories.length > 0)
-    ? scrapedMetadata.navCategories.slice(0, 8)
-    : [];
+  // Extract Core Product / Category Signals
+  const rawCandidates = [
+    ...(scrapedMetadata.navCategories || []),
+    ...(scrapedMetadata.headings || []),
+    ...(scrapedMetadata.aboutPageHeadings || [])
+  ];
 
-  if (coreProducts.length === 0 && scrapedMetadata.headings && scrapedMetadata.headings.length > 0) {
-    coreProducts = scrapedMetadata.headings.slice(0, 6);
-  }
+  const coreProducts = Array.from(new Set(
+    rawCandidates
+      .filter(c => typeof c === 'string' && c.trim().length > 3 && !/^(home|index|about|contact|login|register|cart|checkout|privacy|terms)$/i.test(c.trim()))
+      .slice(0, 8)
+  ));
 
-  if (coreProducts.length === 0 && scrapedMetadata.aboutPageHeadings && scrapedMetadata.aboutPageHeadings.length > 0) {
-    coreProducts = scrapedMetadata.aboutPageHeadings.slice(0, 6);
-  }
-
-  if (coreProducts.length === 0 && scrapedMetadata.metaDescription) {
-    coreProducts = [scrapedMetadata.metaDescription.slice(0, 80)];
-  }
-
-  if (coreProducts.length === 0) {
-    coreProducts = [`${brandNameObj.value} Products & Services`];
-  }
-
-  console.log(`[CrawlerAgent] ✅ Crawl complete. Brand Name: "${brandNameObj.value}", HQ: "${hqObj.headquarters.value || 'N/A'}"`);
+  console.log(`[CrawlerAgent] ✅ Crawl & Extraction complete. Core Products: ${coreProducts.length}, HQ: "${hqObj.headquarters.value || 'N/A'}"`);
 
   return {
     rawUrl,
     domainName,
     brandNameObj,
+    parentCompanyObj: { value: null, status: 'UNKNOWN', sourceType: 'UNKNOWN', evidence: 'No explicit parent company evidence in website DOM', confidence: 0 },
     hqObj: hqObj.headquarters,
     contactObj,
     coreProducts,

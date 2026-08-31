@@ -45,10 +45,14 @@ function validateIndustry(industryObj, combinedText) {
     };
   }
 
-  // Ensure evidence is grounded in scraped text
+  // Ensure evidence is grounded in scraped text, schema, or multimodal screenshot reasoning
+  if (industryObj.sourceType === 'WEBSITE_SCHEMA' || industryObj.sourceType === 'WEBSITE_DOM+WEBSITE_SCREENSHOT' || industryObj.sourceType === 'AI_INFERENCE') {
+    return industryObj;
+  }
+
   if (industryObj.sourceType === 'WEBSITE_DOM' && combinedText) {
     const evText = (industryObj.evidence || '').toLowerCase();
-    const hasGrounding = combinedText.includes(evText) || /matched industry evidence/i.test(evText);
+    const hasGrounding = combinedText.includes(evText) || /matched industry evidence|contextual cluster/i.test(evText);
     if (!hasGrounding) {
       console.warn(`[ValidatorAgent] ⚠️ Overriding Industry to UNKNOWN (Unverified evidence snippet)`);
       return {
@@ -68,41 +72,17 @@ function validateIndustry(industryObj, combinedText) {
 }
 
 function validateHeadquarters(hqObj) {
-  if (!hqObj || !hqObj.value || hqObj.confidence === 0 || hqObj.sourceType === 'UNKNOWN') {
+  if (!hqObj || !hqObj.value || hqObj.sourceType === 'UNKNOWN') {
     return {
       value: null,
       type: 'HEADQUARTERS',
       sourceType: 'UNKNOWN',
-      evidence: 'No headquarters or corporate office address found in website evidence or registry',
-      method: 'NO_MATCHING_ADDRESS_EVIDENCE',
-      confidence: 0,
-      candidates: [],
-      rejectedCandidates: []
+      evidence: 'No headquarters address found in website evidence',
+      confidence: 0
     };
   }
 
   let cleanHq = String(hqObj.value).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-  if (cleanHq.includes('.')) {
-    cleanHq = cleanHq.split('.')[0].trim();
-  }
-
-  // Reject marketing fluff or non-geographic sentences
-  const isMarketingSentence = /looking|feel free|welcome|click|call|services|our|booking|appointment|team|query|queries|contact us|get in touch/i.test(cleanHq);
-  if (cleanHq.length < 3 || isMarketingSentence) {
-    console.warn(`[ValidatorAgent] ⚠️ Overriding Headquarters to UNKNOWN (Marketing sentence detected: "${cleanHq}")`);
-    return {
-      value: null,
-      type: 'HEADQUARTERS',
-      sourceType: 'UNKNOWN',
-      sourceUrl: hqObj.sourceUrl || '',
-      evidence: `Rejected non-geographic HQ text: "${cleanHq}"`,
-      method: 'VALIDATOR_REJECTED_MARKETING_NOISE',
-      confidence: 0,
-      candidates: [],
-      rejectedCandidates: [cleanHq]
-    };
-  }
-
   return {
     ...hqObj,
     value: cleanHq
@@ -110,26 +90,12 @@ function validateHeadquarters(hqObj) {
 }
 
 function validateTagline(taglineObj) {
-  if (!taglineObj || !taglineObj.value || taglineObj.confidence === 0 || taglineObj.sourceType === 'UNKNOWN') {
+  if (!taglineObj || !taglineObj.value || taglineObj.sourceType === 'UNKNOWN') {
     return {
       value: null,
       sourceType: 'UNKNOWN',
       sourceUrl: taglineObj?.sourceUrl || '',
-      evidence: 'No verified slogan found in website evidence',
-      method: 'SEMANTIC_SLOGAN_CLASSIFIER_REJECTED',
-      confidence: 0
-    };
-  }
-
-  const clean = taglineObj.value.trim();
-  const isGeneric = /^(home|welcome|services|about us|contact us|privacy policy|terms|cart|checkout|shop all)$/i.test(clean);
-  if (clean.length < 4 || isGeneric) {
-    return {
-      value: null,
-      sourceType: 'UNKNOWN',
-      sourceUrl: taglineObj.sourceUrl || '',
-      evidence: `Rejected generic heading as slogan: "${clean}"`,
-      method: 'VALIDATOR_REJECTED_GENERIC_HEADING',
+      evidence: 'No slogan or tagline found in website evidence',
       confidence: 0
     };
   }
@@ -272,7 +238,7 @@ async function runValidatorAgent(draftPayload, crawlResult) {
   return {
     ...draftPayload,
     brandName: validBrandName,
-    parentCompany: validBrandName,
+    parentCompany: draftPayload.parentCompany || { value: null, status: 'UNKNOWN', sourceType: 'UNKNOWN', evidence: 'No parent company evidence', confidence: 0 },
     industryCategory: validIndustry,
     headquarters: validHQ,
     tagline: validTagline,

@@ -91,13 +91,18 @@ function resolveBrandName(scrapedMetadata = {}, userBrandName = '', domainName =
     }
   }
 
-  // Priority 4: Domain Derived / Seed
+  // Priority 4: User Override or Domain Derived
+  const formattedUserBrand = (userBrandName && userBrandName.trim().length > 1 && !userBrandName.toLowerCase().startsWith('http'))
+    ? formatCleanSpacedBrandName(userBrandName)
+    : null;
   const formattedDomain = formatCleanSpacedBrandName(domainName);
+  const finalBrandName = formattedUserBrand || formattedDomain || 'Brand Workspace';
+
   return {
-    value: formattedDomain || userBrandName || 'Brand Workspace',
+    value: finalBrandName,
     sourceType: 'WEBSITE_DOM',
     sourceUrl: rawUrl,
-    evidence: `Brand name derived from domain structure: "${formattedDomain}"`,
+    evidence: `Brand name resolved from user input/domain structure: "${finalBrandName}"`,
     confidence: 0.80
   };
 }
@@ -120,7 +125,7 @@ function extractBrandNameFromTitle(metaTitle, domainName) {
   for (const seg of segments) {
     const lowerSeg = seg.toLowerCase();
     if (cleanDomainKey && lowerSeg.includes(cleanDomainKey) && seg.split(/\s+/).length <= 4) {
-      const cleanSeg = seg.replace(/®|™|Official Site|Official Website|India|US|Global/gi, '').trim();
+      const cleanSeg = seg.replace(/®|™|Official Site|Official Website|\b(India|US|Global)\b/gi, '').trim();
       if (cleanSeg.length >= 2) return cleanSeg;
     }
   }
@@ -133,7 +138,7 @@ function formatCleanSpacedBrandName(str) {
   let clean = str.trim();
   clean = clean.replace(/^(https?:\/\/)?(www\d*|m|store|shop|en-in)\./i, '');
   clean = clean.split('/')[0];
-  clean = clean.replace(/\.(com|in|co\.in|org|net|io|ai|app|store|shop|biz|info|us|uk)$/i, '');
+  clean = clean.replace(/\.(?:com|in|co\.in|org|net|io|ai|app|store|shop|biz|info|us|uk)$/i, '');
   clean = clean.replace(/[-_]/g, ' ').trim();
   return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : 'Brand Workspace';
 }
@@ -142,160 +147,55 @@ function formatCleanSpacedBrandName(str) {
  * Field 2: Generic Dynamic Industry Classifier (NO hardcoded brand name conditionals!)
  */
 function classifyPrimaryAndSecondaryIndustry(domainName, brandName, metaDescription, headings, aboutText, schemaIndustry, rawUrl) {
-  const candidates = [];
-  const rejectedCandidates = [];
-
-  const combinedText = ((domainName || '') + ' ' + (headings || []).join(' ') + ' ' + (metaDescription || '') + ' ' + (aboutText || '')).toLowerCase();
-
-  // 1. JSON-LD Schema Tag (Weight 100)
-  if (schemaIndustry && schemaIndustry.length > 3) {
-    candidates.push({
-      industry: schemaIndustry,
-      score: 100,
-      sourceType: 'WEBSITE_SCHEMA',
-      sourceUrl: rawUrl,
-      evidence: `JSON-LD Schema Industry tag: "${schemaIndustry}"`,
-      method: 'SCHEMA_ORGANIZATION_TAG'
-    });
-  }
-
-  // 2. Generic Dynamic Pattern Weight Scorer (Domain-Agnostic Universal Taxonomy)
-  const patternRules = [
-    { category: 'Outdoor Gear, Apparel & Sporting Goods', weight: 90, regex: /\b(outdoor|gear|apparel|clothing|climbing|surfing|skiing|hiking|trail running|footwear|wetsuits|jackets|fleece|sporting goods|activewear|silent sports|mountaineering)\b/i },
-    { category: 'Apparel, Fashion & Accessories', weight: 88, regex: /\b(clothing|apparel|fashion|garments|shirts|pants|dresses|footwear|outerwear|jackets|jeans|accessories|menswear|womenswear)\b/i },
-    { category: 'Beauty, Cosmetics & Personal Care', weight: 88, regex: /\b(beauty|salon|spa|beauticians|makeup|makeup artist|skincare|cosmetics|sunscreen|serums|dermatology|haircare|hair care|grooming|perfume|fragrance)\b/i },
-    { category: 'Consumer Electronics & Hardware', weight: 88, regex: /\b(laptops|desktops|printers|monitors|hardware|smartphones|tablets|pcs|consumer electronics|electronics|audio|headphones)\b/i },
-    { category: 'Software & Cloud Technology', weight: 85, regex: /\b(operating system|cloud computing|enterprise software|developer tools|saas|software solutions|cloud software|analytics|api|developer)\b/i },
-    { category: 'Food, Beverage & Nutrition', weight: 85, regex: /\b(food|beverage|dining|cafe|coffee|tea|snacks|nutrition|grocery|organic|restaurant)\b/i },
-    { category: 'Health, Medical & Wellness', weight: 85, regex: /\b(health|healthcare|medical|pharma|clinic|fitness|gym|supplements|wellness|hospital)\b/i },
-    { category: 'Financial Services & Fintech', weight: 85, regex: /\b(banking|finance|fintech|investments|insurance|payments|loans|wealth management)\b/i },
-    { category: 'Home, Furniture & Living', weight: 85, regex: /\b(furniture|decor|home goods|interior design|bedding|kitchenware|appliances)\b/i },
-    { category: 'E-Commerce & Retail Platform', weight: 82, regex: /\b(e-commerce|online store|marketplace|retail|merchant|storefront)\b/i }
-  ];
-
-  for (const rule of patternRules) {
-    if (rule.regex.test(combinedText)) {
-      const match = combinedText.match(rule.regex);
-      candidates.push({
-        industry: rule.category,
-        score: rule.weight,
-        sourceType: 'WEBSITE_DOM',
-        sourceUrl: rawUrl,
-        evidence: `Matched industry evidence snippet: "${match ? match[0] : rule.category}"`,
-        method: 'DYNAMIC_KEYWORD_CONSENSUS_ANALYSIS'
-      });
-    }
-  }
-
-  if (candidates.length === 0) {
+  // Priority 1: JSON-LD Schema Industry Tag (Weight 100 - Official Schema Evidence)
+  if (schemaIndustry && typeof schemaIndustry === 'string' && schemaIndustry.trim().length > 3) {
     return {
       primaryIndustry: {
-        value: null,
-        sourceType: 'UNKNOWN',
+        value: schemaIndustry.trim(),
+        status: 'VERIFIED',
+        sourceType: 'WEBSITE_SCHEMA',
         sourceUrl: rawUrl,
-        evidence: 'No industry evidence found in website content or schema',
-        method: 'NO_MATCHING_EVIDENCE',
-        confidence: 0,
-        candidates: [],
+        evidence: `Official JSON-LD Schema Organization Industry tag: "${schemaIndustry.trim()}"`,
+        method: 'SCHEMA_ORGANIZATION_TAG',
+        confidence: 1.0,
+        candidates: [schemaIndustry.trim()],
         rejectedCandidates: []
       },
       secondaryIndustries: []
     };
   }
 
-  candidates.sort((a, b) => b.score - a.score);
-  const winning = candidates[0];
-  const secondary = [];
-
-  for (let i = 1; i < candidates.length; i++) {
-    if (candidates[i].industry !== winning.industry && !secondary.some(s => s.value === candidates[i].industry)) {
-      secondary.push({
-        value: candidates[i].industry,
-        sourceType: candidates[i].sourceType,
-        evidence: candidates[i].evidence
-      });
-      rejectedCandidates.push({
-        category: candidates[i].industry,
-        score: candidates[i].score,
-        reason: `Lower priority score (${candidates[i].score}) compared to primary winner "${winning.industry}" (score ${winning.score})`
-      });
-    }
-  }
-
+  // Defer 100% of un-schematized industry determination to Gemini Multimodal AI
   return {
     primaryIndustry: {
-      value: winning.industry,
-      sourceType: winning.sourceType,
+      value: null,
+      status: 'UNKNOWN',
+      sourceType: 'UNKNOWN',
       sourceUrl: rawUrl,
-      evidence: winning.evidence,
-      method: winning.method,
-      confidence: Math.min(winning.score / 100, 0.95),
-      candidates: Array.from(new Set(candidates.map(c => c.industry))),
-      rejectedCandidates
+      evidence: 'No official JSON-LD schema industry tag found on website',
+      method: 'DEFER_TO_MULTIMODAL_AI',
+      confidence: 0,
+      candidates: [],
+      rejectedCandidates: []
     },
-    secondaryIndustries: secondary
+    secondaryIndustries: []
   };
 }
 
 /**
- * Field 3: Multi-Signal Business Type Consensus Classifier
+ * Field 3: Multi-Signal Business Type Classifier
  */
 function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
-  const signals = [];
-  const types = [];
-
-  const isB2BEnterprise = /enterprise solutions|corporate purchasing|volume licensing|commercial sales|wholesale distribution|b2b portal|business accounts/i.test(combinedText);
-  const isB2BSaaS = /software-as-a-service|saas platform|cloud subscription|developer api|subscription pricing|free trial/i.test(combinedText);
-  const isD2CCheckout = /official online store|direct-to-consumer|shop online|d2c brand|cart|checkout|add to cart|buy now|\b(shop|store|buy|products|bestsellers|free shipping|combos|skincare|haircare|grooming|gear|apparel|wetsuits|jackets|fleece)\b/i.test(combinedText);
-  const isConsumerApp = /download app|on-demand|food delivery|consumer app|salon|clinic|gym|school/i.test(combinedText);
-
-  if (isB2BEnterprise) {
-    signals.push({ signal: 'Enterprise & corporate solutions terms', sourceUrl: rawUrl, snippet: 'Matched enterprise/wholesale terms in DOM text' });
-  }
-  if (isB2BSaaS) {
-    signals.push({ signal: 'SaaS subscription & API documentation signals', sourceUrl: rawUrl, snippet: 'Matched pricing/trial/API docs' });
-  }
-  if (isD2CCheckout) {
-    signals.push({ signal: 'E-commerce storefront & checkout cart signals', sourceUrl: rawUrl, snippet: 'Matched e-commerce shopping & product signals' });
-  }
-  if (isConsumerApp) {
-    signals.push({ signal: 'Consumer app & on-demand service signals', sourceUrl: rawUrl, snippet: 'Matched consumer app download' });
-  }
-
-  if (isB2BEnterprise && isB2BSaaS) {
-    types.push('B2B Enterprise & SaaS Platform');
-  } else if (isB2BEnterprise) {
-    types.push('B2B Enterprise');
-  } else if (isB2BSaaS) {
-    types.push('B2B SaaS Platform');
-  }
-
-  if (isD2CCheckout) {
-    types.push('D2C E-Commerce Brand');
-  } else if (isConsumerApp) {
-    types.push('B2C Consumer Platform');
-  }
-
-  if (types.length === 0) {
-    return {
-      value: null,
-      sourceType: 'UNKNOWN',
-      sourceUrl: rawUrl,
-      evidence: [],
-      method: 'MULTI_SIGNAL_CONSENSUS_ANALYSIS',
-      confidence: 0.0,
-      candidates: [],
-      rejectedCandidates: [{ candidate: 'B2B/B2C', reason: 'Insufficient multi-signal evidence on page' }]
-    };
-  }
-
+  // Defer business type classification to Multimodal AI reasoning
   return {
-    value: types[0],
-    sourceType: 'WEBSITE_DOM',
+    value: null,
+    sourceType: 'UNKNOWN',
     sourceUrl: rawUrl,
-    evidence: signals,
-    method: 'MULTI_SIGNAL_CONSENSUS_ANALYSIS',
-    confidence: 0.85
+    evidence: [],
+    method: 'DEFER_TO_MULTIMODAL_AI',
+    confidence: 0.0,
+    candidates: [],
+    rejectedCandidates: []
   };
 }
 
@@ -303,50 +203,9 @@ function classifyBusinessTypeWithConsensus(combinedText, rawUrl) {
  * Field 5: Headquarters & Regional Locations Resolver
  */
 function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetadata, combinedText, rawUrl) {
-  const GLOBAL_PARENTS_HQ = {
-    'hp.com': 'Palo Alto, California, USA',
-    'hp': 'Palo Alto, California, USA',
-    'dell.com': 'Round Rock, Texas, USA',
-    'dell': 'Round Rock, Texas, USA',
-    'microsoft.com': 'Redmond, Washington, USA',
-    'microsoft': 'Redmond, Washington, USA',
-    'apple.com': 'Cupertino, California, USA',
-    'apple': 'Cupertino, California, USA',
-    'nike.com': 'Beaverton, Oregon, USA',
-    'nike': 'Beaverton, Oregon, USA',
-    'motorola.com': 'Chicago, Illinois, USA',
-    'motorola': 'Chicago, Illinois, USA',
-    'shopify.com': 'Ottawa, Ontario, Canada',
-    'shopify': 'Ottawa, Ontario, Canada',
-    'puma.com': 'Herzogenaurach, Bavaria, Germany',
-    'nestle.com': 'Vevey, Vaud, Switzerland',
-    'tata': 'Mumbai, Maharashtra, India',
-    'zebronics': 'Chennai, Tamil Nadu, India',
-    'jio': 'Mumbai, Maharashtra, India',
-    'boat': 'Mumbai, Maharashtra, India',
-    'patagonia.com': 'Ventura, California, USA',
-    'aveda.com': 'Blaine, Minnesota, USA'
-  };
-
   const candidateLocations = [];
-  const rejectedLocations = [];
 
-  // Priority 1: Corporate Parent Registry Lookup (Matched strictly against domainKey)
-  const domainKey = (domainName || '').toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
-  const regHq = GLOBAL_PARENTS_HQ[domainKey];
-  if (regHq) {
-    candidateLocations.push({
-      value: regHq,
-      type: 'HEADQUARTERS',
-      sourceType: 'REGISTRY',
-      sourceUrl: rawUrl,
-      evidence: `Verified from Official Corporate Parent Registry for ${domainKey}`,
-      method: 'CORPORATE_REGISTRY_LOOKUP',
-      confidence: 0.95
-    });
-  }
-
-  // Priority 2: JSON-LD Schema Address
+  // Priority 1: JSON-LD Schema Address
   if (scrapedMetadata.schemaAddress) {
     const cleanAddr = scrapedMetadata.schemaAddress.replace(/\d{5,6}|\b(pincode|zip|street|floor|building)\b/gi, '').trim();
     const parts = cleanAddr.split(',').map(s => s.trim()).filter(Boolean);
@@ -363,13 +222,13 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
     }
   }
 
-  // Priority 3: Scraped Contact DOM Address with explicit HQ keywords
+  // Priority 2: Scraped Contact DOM Address
   if (scrapedMetadata.hqAddress && scrapedMetadata.hqAddress.length > 3) {
     let cleanHq = scrapedMetadata.hqAddress.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (cleanHq.includes('.')) {
+    if (cleanHq.includes('.') && !/ltd\.|inc\.|co\.|corp\.|bldg\.|st\.|pvt\./i.test(cleanHq)) {
       cleanHq = cleanHq.split('.')[0].trim();
     }
-    if (cleanHq.length >= 3 && !/looking|feel free|welcome|click|call|services|our|booking|appointment|team/i.test(cleanHq)) {
+    if (cleanHq.length >= 3) {
       candidateLocations.push({
         value: cleanHq,
         type: 'HEADQUARTERS',
@@ -382,27 +241,6 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
     }
   }
 
-  // Priority 4: City/State/Country Location Pattern Matcher in Deep Context Text
-  if (candidateLocations.length === 0 && combinedText) {
-    const locMatch = combinedText.match(/(?:headquartered in|based in|corporate office in|located in|registered office in|headquarters in|office in)[\s:]+([A-Z][a-zA-Z\s,.]{3,35})/i) ||
-                     combinedText.match(/\b(Ventura,\s*California|Ventura,\s*CA|Santa Barbara,\s*CA|San Francisco,\s*CA|Los Angeles,\s*CA|Seattle,\s*WA|Austin,\s*TX|New York,\s*NY|Chicago,\s*IL|Boston,\s*MA|London,\s*UK|Paris,\s*France|Tokyo,\s*Japan|Toronto,\s*Canada|Sydney,\s*Australia|Mumbai,\s*India|Delhi,\s*India|Bengaluru,\s*India|Ahmedabad,\s*Gujarat)\b/i);
-
-    if (locMatch && (locMatch[1] || locMatch[0])) {
-      const matchedStr = (locMatch[1] || locMatch[0]).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').split('.')[0].trim();
-      if (matchedStr.length >= 3 && !/looking|feel free|welcome|click|call|services|our|booking|appointment|team/i.test(matchedStr)) {
-        candidateLocations.push({
-          value: matchedStr,
-          type: 'HEADQUARTERS',
-          sourceType: 'WEBSITE_DOM',
-          sourceUrl: rawUrl,
-          evidence: `Extracted location from website evidence: "${matchedStr}"`,
-          method: 'LOCATION_PATTERN_MATCHER',
-          confidence: 0.85
-        });
-      }
-    }
-  }
-
   if (candidateLocations.length === 0) {
     return {
       headquarters: {
@@ -410,8 +248,8 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
         type: 'HEADQUARTERS',
         sourceType: 'UNKNOWN',
         sourceUrl: rawUrl,
-        evidence: 'No headquarters or corporate office address found in website evidence or registry',
-        method: 'NO_MATCHING_ADDRESS_EVIDENCE',
+        evidence: 'No JSON-LD schema or contact page address found',
+        method: 'DEFER_TO_MULTIMODAL_AI',
         confidence: 0,
         candidates: [],
         rejectedCandidates: []
@@ -433,7 +271,7 @@ function resolveHeadquartersAndLocations(domainName, cleanBrandKey, scrapedMetad
       method: winningHq.method,
       confidence: winningHq.confidence,
       candidates: Array.from(new Set(candidateLocations.map(c => c.value))),
-      rejectedCandidates: rejectedLocations
+      rejectedCandidates: []
     },
     locations: []
   };
@@ -540,76 +378,44 @@ function classifyBrandCategory(domainName, brandName, headings = [], metaDescrip
 }
 
 /**
- * Field 4: Deterministic Semantic Slogan & Tagline Classifier
+ * Field 4: Tagline & Slogan Classifier
  */
 function validateAndClassifyTagline(scrapedMetadata = {}, headings = [], brandName = '', domainName = '') {
   const rawUrl = scrapedMetadata.cleanUrl || `https://${domainName}`;
-  const cleanBrand = (brandName || '').toLowerCase().trim();
-  const cleanDomain = (domainName || '').toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
 
-  // Priority 1: JSON-LD Organization.slogan (High Confidence)
+  // Priority 1: JSON-LD Organization.slogan
   if (scrapedMetadata.schemaSlogan && typeof scrapedMetadata.schemaSlogan === 'string' && scrapedMetadata.schemaSlogan.trim().length > 2) {
     const candidate = scrapedMetadata.schemaSlogan.trim();
-    if (!isNegativeTaglineNoise(candidate, cleanBrand, cleanDomain)) {
-      return {
-        value: candidate,
-        sourceType: 'WEBSITE_SCHEMA',
-        sourceUrl: rawUrl,
-        evidence: `JSON-LD Organization.slogan: "${candidate}"`,
-        method: 'SCHEMA_ORGANIZATION_SLOGAN',
-        confidence: 0.95
-      };
-    }
+    return {
+      value: candidate,
+      sourceType: 'WEBSITE_SCHEMA',
+      sourceUrl: rawUrl,
+      evidence: `JSON-LD Organization.slogan: "${candidate}"`,
+      method: 'SCHEMA_ORGANIZATION_SLOGAN',
+      confidence: 0.95
+    };
   }
 
-  // Priority 2: Explicit Logo Tagline (High Confidence)
-  if (scrapedMetadata.logoText && typeof scrapedMetadata.logoText === 'string' && scrapedMetadata.logoText.trim().length > 2) {
-    const candidate = scrapedMetadata.logoText.trim();
-    if (!isNegativeTaglineNoise(candidate, cleanBrand, cleanDomain) && isPositiveSemanticSlogan(candidate)) {
-      return {
-        value: candidate,
-        sourceType: 'WEBSITE_DOM',
-        sourceUrl: rawUrl,
-        evidence: `Logo Element Tagline: "${candidate}"`,
-        method: 'LOGO_TAGLINE_ELEMENT',
-        confidence: 0.90
-      };
-    }
+  // Priority 2: Hero Banner Tagline
+  if (scrapedMetadata.heroBannerTagline && typeof scrapedMetadata.heroBannerTagline === 'string' && scrapedMetadata.heroBannerTagline.trim().length > 2) {
+    const candidate = scrapedMetadata.heroBannerTagline.trim();
+    return {
+      value: candidate,
+      sourceType: 'WEBSITE_DOM',
+      sourceUrl: rawUrl,
+      evidence: `Hero Banner Tagline: "${candidate}"`,
+      method: 'HERO_BANNER_TAGLINE',
+      confidence: 0.88
+    };
   }
 
-  // Priority 3: Scraped Headings (Evaluated strictly through Negative Filters + Positive Semantic Classifier)
-  const candidatePool = [];
-  if (scrapedMetadata.heroBannerTagline) candidatePool.push(scrapedMetadata.heroBannerTagline);
-  if (headings && Array.isArray(headings)) {
-    candidatePool.push(...headings);
-  }
-
-  for (const rawCandidate of candidatePool) {
-    if (!rawCandidate || typeof rawCandidate !== 'string') continue;
-    const cleanCandidate = rawCandidate.trim().replace(/[\r\n\t]+/g, ' ');
-    
-    if (isNegativeTaglineNoise(cleanCandidate, cleanBrand, cleanDomain)) {
-      continue;
-    }
-
-    if (isPositiveSemanticSlogan(cleanCandidate)) {
-      return {
-        value: cleanCandidate,
-        sourceType: 'WEBSITE_DOM',
-        sourceUrl: rawUrl,
-        evidence: `Verified Semantic Slogan: "${cleanCandidate}"`,
-        method: 'SEMANTIC_SLOGAN_CLASSIFIER',
-        confidence: 0.85
-      };
-    }
-  }
-
+  // Defer un-schematized tagline determination to Multimodal AI
   return {
     value: null,
     sourceType: 'UNKNOWN',
     sourceUrl: rawUrl,
-    evidence: 'No verified slogan found in website evidence',
-    method: 'SEMANTIC_SLOGAN_CLASSIFIER_REJECTED',
+    evidence: 'No JSON-LD schema or hero banner tagline found',
+    method: 'DEFER_TO_MULTIMODAL_AI',
     confidence: 0
   };
 }

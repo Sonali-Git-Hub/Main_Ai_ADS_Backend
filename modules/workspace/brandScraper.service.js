@@ -20,6 +20,40 @@ try {
   }
 } catch (e) {}
 
+let puppeteer = null;
+try {
+  puppeteer = require('puppeteer');
+} catch (e) {}
+
+function extractEmailsFromText(text) {
+  if (!text || typeof text !== 'string') return [];
+
+  // 1. Decode HTML entities and anti-spam obfuscations
+  let cleanText = text
+    .replace(/&#64;/gi, '@')
+    .replace(/&#46;/gi, '.')
+    .replace(/\s*\[\s*at\s*\]\s*/gi, '@')
+    .replace(/\s*\(\s*at\s*\)\s*/gi, '@')
+    .replace(/\s*\[\s*dot\s*\]\s*/gi, '.')
+    .replace(/\s*\(\s*dot\s*\)\s*/gi, '.');
+
+  // 2. Extract email regex pattern
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
+  const matches = cleanText.match(emailRegex) || [];
+
+  const dummyFilter = /example\.com|domain\.com|yourname|username|email\.com|wixpress\.com|sentry\.io|schema\.org|gravatar\.com|png|jpg|jpeg|webp|gif|svg$/i;
+
+  const validEmails = [];
+  matches.forEach(e => {
+    const cleanE = e.trim().toLowerCase();
+    if (cleanE.length > 5 && cleanE.length < 80 && !dummyFilter.test(cleanE) && !validEmails.includes(cleanE)) {
+      validEmails.push(cleanE);
+    }
+  });
+
+  return validEmails;
+}
+
 async function extractLogoPixelColors(logoUrl) {
   if (!logoUrl || typeof logoUrl !== 'string' || logoUrl.endsWith('.svg') || logoUrl.startsWith('data:image/svg')) {
     return [];
@@ -58,7 +92,7 @@ function formatCleanSpacedBrandName(str) {
   if (clean.includes('/') || clean.toLowerCase().startsWith('http') || /\.(com|in|org|net|io|ai|co\.in|store|shop)\b/i.test(clean)) {
     clean = clean.replace(/^(https?:\/\/)?(www\d*|m|store|shop|en-in)\./i, '');
     clean = clean.split('/')[0];
-    clean = clean.replace(/\.(com|in|co\.in|org|net|io|ai|app|store|shop|biz|info|us|uk)$/i, '');
+    clean = clean.replace(/\.(?:com|in|co\.in|org|net|io|ai|app|store|shop|biz|info|us|uk)$/i, '');
     clean = clean.replace(/[-_]/g, ' ').trim();
   }
 
@@ -244,15 +278,17 @@ async function extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl
 
   const merged = [...logoBrandHexes, ...tokenBrandHexes];
 
-  if (merged.length >= 2) {
+  if (merged.length >= 1) {
     return merged.slice(0, 4);
   }
 
-  return generateDynamicBrandPalette(domainName);
+  // NOTE: Requirement 7 forbids injecting synthetic brand colors as actual Brand DNA.
+  // Visual evidence missing -> return empty array [].
+  return [];
 }
 
 async function crawlBrandContext(cleanUrl, $) {
-  const internalPagesMap = new Map();
+  const internalPagesMap = new Map(); // fullHref -> { score, category }
   const crawledTexts = [];
   let aboutPageHeadings = [];
   let aboutPageText = '';
@@ -273,7 +309,7 @@ async function crawlBrandContext(cleanUrl, $) {
     }
   });
 
-  // Generic Link Scoring System (Domain-Agnostic Keyword Weights)
+  // Field-Aware Link Categorization & Scoring System
   $('a[href]').each((_, el) => {
     const href = $(el).attr('href');
     if (!href) return;
@@ -281,50 +317,107 @@ async function crawlBrandContext(cleanUrl, $) {
     try {
       const fullUrl = href.startsWith('http') ? new URL(href) : new URL(href, cleanUrl);
       if (fullUrl.hostname === baseUrl.hostname) {
-        const path = fullUrl.pathname.toLowerCase();
-        const fullHref = fullUrl.origin + fullUrl.pathname; // Strip query params for deduplication
+        const rawPath = fullUrl.pathname.toLowerCase();
+        const cleanPath = (fullUrl.pathname.length > 1 && fullUrl.pathname.endsWith('/')) 
+          ? fullUrl.pathname.slice(0, -1) 
+          : fullUrl.pathname;
+        const fullHref = fullUrl.origin + cleanPath; // Strip query params and trailing slash for deduplication
 
-        if (fullHref === cleanUrl.replace(/\/$/, '') || fullHref === cleanUrl.replace(/\/$/, '') + '/') return;
+        if (fullHref === cleanUrl.replace(/\/$/, '')) return;
 
         let score = 0;
-        if (/about|who-we-are|our-story|company|our-reason|footprint|mission|values|history/i.test(path)) score += 10;
-        if (/contact|reach-us|support|help|locations|offices|headquarters|stores|contact-us/i.test(path)) score += 9;
-        if (/press|media|newsroom|faq|corporate|info|aboutus/i.test(path)) score += 6;
-        if (/shop|collections|products|catalog|services|categories/i.test(path)) score += 4;
+        let category = 'GENERAL';
+
+        if (/about|who-we-are|our-story|company|our-reason|footprint|history|overview/i.test(rawPath)) {
+          score += 10;
+          category = 'IDENTITY_STORY';
+        } else if (/mission|vision|purpose|values|sustainability|impact/i.test(rawPath)) {
+          score += 10;
+          category = 'MISSION_VISION';
+        } else if (/contact|reach-us|support|help|locations|offices|headquarters|stores|contact-us/i.test(rawPath)) {
+          score += 9;
+          category = 'HEADQUARTERS_OFFICES';
+        } else if (/shop|collections|products|catalog|services|categories|solutions/i.test(rawPath)) {
+          score += 5;
+          category = 'PRODUCTS_SERVICES';
+        } else if (/press|media|newsroom|faq|corporate|info/i.test(rawPath)) {
+          score += 6;
+          category = 'CLAIMS_PRESS';
+        }
 
         // Apply negative penalty for tracking params or utility links
         if (/utm_|campaign|cart|checkout|login|register|lang=/i.test(href)) score -= 8;
 
         if (score > 0) {
-          const currentBest = internalPagesMap.get(fullHref) || 0;
-          if (score > currentBest) {
-            internalPagesMap.set(fullHref, score);
+          const currentBest = internalPagesMap.get(fullHref) || { score: 0, category: 'GENERAL' };
+          if (score > currentBest.score) {
+            internalPagesMap.set(fullHref, { score, category });
           }
         }
       }
     } catch (e) {}
   });
 
-  // Fallback probe endpoints if map is small
-  if (internalPagesMap.size < 2) {
-    const base = cleanUrl.replace(/\/$/, '');
-    internalPagesMap.set(`${base}/about`, 8);
-    internalPagesMap.set(`${base}/about-us`, 8);
-    internalPagesMap.set(`${base}/contact`, 8);
-    internalPagesMap.set(`${base}/contact-us`, 8);
-    internalPagesMap.set(`${base}/help`, 6);
+  // Inject high-value Mission, Vision, and Purpose probe endpoints into candidate pool
+  const base = cleanUrl.replace(/\/$/, '');
+  const probeEndpoints = [
+    { url: `${base}/about-us/mission-and-vision`, score: 12, category: 'MISSION_VISION' },
+    { url: `${base}/about/mission`, score: 12, category: 'MISSION_VISION' },
+    { url: `${base}/our-purpose`, score: 12, category: 'MISSION_VISION' },
+    { url: `${base}/vision-mission`, score: 12, category: 'MISSION_VISION' },
+    { url: `${base}/about-us`, score: 10, category: 'IDENTITY_STORY' },
+    { url: `${base}/about`, score: 10, category: 'IDENTITY_STORY' },
+    { url: `${base}/overview`, score: 10, category: 'IDENTITY_STORY' },
+    { url: `${base}/contact-us`, score: 9, category: 'HEADQUARTERS_OFFICES' },
+    { url: `${base}/contact`, score: 9, category: 'HEADQUARTERS_OFFICES' }
+  ];
+
+  probeEndpoints.forEach(p => {
+    if (!internalPagesMap.has(p.url)) {
+      internalPagesMap.set(p.url, { score: p.score, category: p.category });
+    }
+  });
+
+  // Field-Aware Page Selection: Prioritize MISSION_VISION and IDENTITY_STORY buckets first
+  const categoryBuckets = new Map();
+  for (const [url, item] of internalPagesMap.entries()) {
+    if (!categoryBuckets.has(item.category)) categoryBuckets.set(item.category, []);
+    categoryBuckets.get(item.category).push({ url, score: item.score });
   }
 
-  // Sort links descending by score and pick top 5 distinct URLs
-  const sortedPages = Array.from(internalPagesMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(entry => entry[0]);
+  const selectedPages = [];
+  const priorityCategoryOrder = ['MISSION_VISION', 'IDENTITY_STORY', 'HEADQUARTERS_OFFICES', 'PRODUCTS_SERVICES', 'CLAIMS_PRESS', 'GENERAL'];
 
-  const selectedPages = Array.from(new Set(sortedPages)).slice(0, 5);
+  // First pass: pick top URL from each priority category bucket
+  for (const cat of priorityCategoryOrder) {
+    if (categoryBuckets.has(cat)) {
+      const items = categoryBuckets.get(cat);
+      items.sort((a, b) => b.score - a.score);
+      if (items.length > 0 && selectedPages.length < 5) {
+        if (!selectedPages.includes(items[0].url)) {
+          selectedPages.push(items[0].url);
+        }
+      }
+    }
+  }
+
+  // Second pass: fill remaining slots up to 5 from remaining top scores
+  const allRemaining = Array.from(internalPagesMap.entries())
+    .map(([url, item]) => ({ url, score: item.score }))
+    .filter(i => !selectedPages.includes(i.url))
+    .sort((a, b) => b.score - a.score);
+
+  for (const rem of allRemaining) {
+    if (selectedPages.length >= 5) break;
+    selectedPages.push(rem.url);
+  }
+
+  const crawledPageDetails = [];
 
   // Concurrently fetch top 5 ranked internal pages
   await Promise.all(selectedPages.map(async (pageUrl) => {
     try {
+      const pageCategoryInfo = internalPagesMap.get(pageUrl) || { category: 'GENERAL' };
       const isAboutPage = /about|who-we-are|our-story|company|footprint|mission|values|reason/i.test(pageUrl);
       const isContactPage = /contact|locations|offices|headquarters|support|help|stores/i.test(pageUrl);
       const isPressPage = /press|media|newsroom|brand|corporate|faq/i.test(pageUrl);
@@ -339,6 +432,7 @@ async function crawlBrandContext(cleanUrl, $) {
       });
 
       const page$ = cheerio.load(response.data);
+      const pageTitle = page$('title').text().trim() || pageUrl;
       page$('script, style, iframe, noscript, svg').remove();
 
       const pageHeadings = [];
@@ -352,9 +446,9 @@ async function crawlBrandContext(cleanUrl, $) {
       });
 
       const pageParagraphs = [];
-      page$('p, article, section, address, div[class*="address"], div[class*="office"], div[class*="contact"], footer').each((_, el) => {
+      page$('p, article, section, address, div[class*="address"], div[class*="office"], div[class*="contact"], footer, span[class*="slogan"], span[class*="tagline"]').each((_, el) => {
         const txt = page$(el).text().trim();
-        if (txt.length > 15 && txt.length < 800) pageParagraphs.push(txt);
+        if (txt.length >= 4 && txt.length < 800) pageParagraphs.push(txt);
       });
 
       if (isAboutPage) {
@@ -372,14 +466,56 @@ async function crawlBrandContext(cleanUrl, $) {
         pressKitText += (pressKitText ? ' ' : '') + pageParagraphs.slice(0, 8).join(' ');
       }
 
+      const subEmails = [];
+      const subPhones = [];
+      const subSocials = [];
+
+      page$('a[href]').each((_, el) => {
+        const href = page$(el).attr('href') || '';
+        if (/facebook\.com/i.test(href) && !subSocials.includes('Facebook')) subSocials.push('Facebook');
+        if (/instagram\.com/i.test(href) && !subSocials.includes('Instagram')) subSocials.push('Instagram');
+        if (/linkedin\.com/i.test(href) && !subSocials.includes('LinkedIn')) subSocials.push('LinkedIn');
+        if (/twitter\.com|x\.com/i.test(href) && !subSocials.includes('X (Twitter)')) subSocials.push('X (Twitter)');
+        if (/youtube\.com/i.test(href) && !subSocials.includes('YouTube')) subSocials.push('YouTube');
+
+        if (href.startsWith('mailto:')) {
+          const email = href.replace('mailto:', '').split('?')[0].trim();
+          if (email && email.includes('@') && !subEmails.includes(email)) subEmails.push(email.toLowerCase());
+        }
+        if (href.startsWith('tel:')) {
+          const rawPhone = href.replace('tel:', '').trim();
+          const validP = filterValidPhoneNumber(rawPhone);
+          if (validP && !subPhones.includes(validP)) subPhones.push(validP);
+        }
+      });
+
+      // Scan full internal subpage text & markup for plain-text email addresses
+      const pageTextEmails = extractEmailsFromText(page$.html() + ' ' + page$.text());
+      pageTextEmails.forEach(em => { if (!subEmails.includes(em)) subEmails.push(em); });
+
+      const textSnippet = pageParagraphs.slice(0, 12).join(' ');
       if (pageHeadings.length > 0 || pageParagraphs.length > 0) {
-        crawledTexts.push(`[Page URL: ${pageUrl}]\nHeadings: ${pageHeadings.join(' | ')}\nContent: ${pageParagraphs.slice(0, 12).join(' ')}`);
+        crawledTexts.push(`[Page URL: ${pageUrl}]\nHeadings: ${pageHeadings.join(' | ')}\nContent: ${textSnippet}`);
       }
+
+      crawledPageDetails.push({
+        url: pageUrl,
+        pageTitle: pageTitle,
+        pageType: pageCategoryInfo.category || 'INTERNAL_SUBPAGE',
+        textEvidence: textSnippet,
+        headings: pageHeadings.slice(0, 8),
+        emails: subEmails,
+        phones: subPhones,
+        socialPlatforms: subSocials,
+        metadata: { metaTitle: pageTitle, metaDescription: '' },
+        jsonLd: null
+      });
     } catch (e) {}
   }));
 
   return {
     internalPages: selectedPages,
+    crawledPageDetails,
     deepContextText: crawledTexts.join('\n\n'),
     aboutPageHeadings,
     aboutPageText,
@@ -387,6 +523,130 @@ async function crawlBrandContext(cleanUrl, $) {
     pressKitText,
     navCategories: navCategories.slice(0, 15)
   };
+}
+
+/**
+ * Capture screenshots for crawled pages (Homepage + selected internal pages)
+ */
+async function capturePageScreenshots(pagesList) {
+  if (!puppeteer) {
+    console.warn('[SCREENSHOT] Puppeteer not available, skipping visual screenshot capture');
+    return pagesList.map(p => ({
+      ...p,
+      screenshot: {
+        base64: null,
+        mimeType: 'image/png',
+        timestamp: new Date().toISOString(),
+        status: 'FAILED',
+        error: 'Puppeteer library unavailable'
+      }
+    }));
+  }
+
+  let browser = null;
+  const pagesEvidence = [];
+  let successCount = 0;
+
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    });
+
+    for (const pageItem of pagesList) {
+      const pageUrl = pageItem.url;
+      console.log(`[SCREENSHOT] Capturing: ${pageUrl}`);
+
+      let pageInstance = null;
+      try {
+        pageInstance = await browser.newPage();
+        await pageInstance.setViewport({ width: 1280, height: 800 });
+
+        // Navigate to page
+        await pageInstance.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+        // Allow 1s for lazy-loaded images/fonts & JS rendering
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Extract live rendered DOM text for Single Page Applications (React/Vue/Next.js)
+        let liveRenderedText = '';
+        try {
+          liveRenderedText = await pageInstance.evaluate(() => {
+            const clone = document.body ? document.body.cloneNode(true) : null;
+            if (!clone) return '';
+            const removeEls = clone.querySelectorAll('script, style, noscript, svg, iframe');
+            removeEls.forEach(el => el.remove());
+            return clone.innerText.replace(/\s+/g, ' ').trim();
+          });
+        } catch (e) {}
+
+        const base64Screenshot = await pageInstance.screenshot({
+          type: 'png',
+          encoding: 'base64',
+          fullPage: false
+        });
+
+        console.log(`[SCREENSHOT] Captured successfully: ${pageUrl} (Live DOM Text: ${liveRenderedText.length} chars)`);
+        successCount++;
+
+        let enrichedTextEvidence = pageItem.textEvidence || '';
+        if (liveRenderedText && (liveRenderedText.length > enrichedTextEvidence.length || enrichedTextEvidence.length < 50)) {
+          enrichedTextEvidence = liveRenderedText.slice(0, 1200);
+        }
+
+        pagesEvidence.push({
+          ...pageItem,
+          textEvidence: enrichedTextEvidence,
+          screenshot: {
+            base64: base64Screenshot,
+            mimeType: 'image/png',
+            timestamp: new Date().toISOString(),
+            status: 'SUCCESS',
+            error: null
+          }
+        });
+      } catch (err) {
+        console.warn(`[SCREENSHOT] Failed: ${pageUrl} (${err.message})`);
+        pagesEvidence.push({
+          ...pageItem,
+          screenshot: {
+            base64: null,
+            mimeType: 'image/png',
+            timestamp: new Date().toISOString(),
+            status: 'FAILED',
+            error: err.message
+          }
+        });
+      } finally {
+        if (pageInstance) {
+          try { await pageInstance.close(); } catch (e) {}
+        }
+      }
+    }
+  } catch (browserErr) {
+    console.error(`[SCREENSHOT] Browser launch failed: ${browserErr.message}`);
+    for (const pageItem of pagesList) {
+      if (!pagesEvidence.some(p => p.url === pageItem.url)) {
+        pagesEvidence.push({
+          ...pageItem,
+          screenshot: {
+            base64: null,
+            mimeType: 'image/png',
+            timestamp: new Date().toISOString(),
+            status: 'FAILED',
+            error: browserErr.message
+          }
+        });
+      }
+    }
+  } finally {
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
+  }
+
+  console.log(`[SCREENSHOT] Captured ${successCount} / ${pagesList.length} crawled pages`);
+  return pagesEvidence;
 }
 
 
@@ -581,9 +841,15 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
       }
     });
 
-    const hqMatch = cleanBodyText.match(/(?:headquarters|registered office|corporate office|based in|located in)[\s:]+([A-Z][a-zA-Z\s,.]{3,40})/i);
+    // Extract plain-text email addresses from clean body text & HTML markup
+    const textEmails = extractEmailsFromText(cleanBodyText + ' ' + html);
+    textEmails.forEach(em => {
+      if (!emails.includes(em)) emails.push(em);
+    });
+
+    const hqMatch = cleanBodyText.match(/(?:headquarters|registered office|corporate office|based in|located in)[\s:]+([A-Z][a-zA-Z\s,.'-]{3,60})/i);
     if (hqMatch && hqMatch[1]) {
-      const candidateHQ = hqMatch[1].trim().split('.')[0].trim();
+      const candidateHQ = hqMatch[1].trim().split('\n')[0].trim();
       if (candidateHQ.length >= 3 && !/looking|feel free|welcome|click|call|services|our|booking/i.test(candidateHQ)) {
         hqAddress = candidateHQ;
       }
@@ -600,12 +866,17 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   let navCategories = [];
   let brandColors = [];
 
-  const crawlPromise = $ ? crawlBrandContext(cleanUrl, $) : Promise.resolve({ internalPages: [] });
-  const colorPromise = extractAccurateBrandColors(cleanUrl, domainName, $, html, logoUrl);
+  let effectiveCheerio = $;
+  if (!effectiveCheerio && html) {
+    try { effectiveCheerio = cheerio.load(html); } catch (e) {}
+  }
+
+  const crawlPromise = effectiveCheerio ? crawlBrandContext(cleanUrl, effectiveCheerio) : Promise.resolve({ internalPages: [] });
+  const colorPromise = extractAccurateBrandColors(cleanUrl, domainName, effectiveCheerio, html, logoUrl);
 
   const [deepData, colorsResult] = await Promise.all([crawlPromise, colorPromise]);
 
-  if ($) {
+  if (effectiveCheerio) {
     deepContextText = deepData.deepContextText || '';
     aboutPageHeadings = deepData.aboutPageHeadings || [];
     aboutPageText = deepData.aboutPageText || '';
@@ -616,6 +887,42 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
       crawledSources.push('INTERNAL_ABOUT_PAGES');
       console.log(`📄 [SCRAPER] Discovered & Parsed ${deepData.internalPages.length} Internal Pages (${deepData.internalPages.join(', ')})`);
     }
+
+    if (deepData.crawledPageDetails) {
+      deepData.crawledPageDetails.forEach(page => {
+        if (page.emails) page.emails.forEach(em => { if (!emails.includes(em)) emails.push(em); });
+        if (page.phones) page.phones.forEach(ph => { if (!phones.includes(ph)) phones.push(ph); });
+        if (page.socialPlatforms) page.socialPlatforms.forEach(soc => { if (!socialPlatforms.includes(soc)) socialPlatforms.push(soc); });
+      });
+    }
+  }
+
+  // STEP 5: Capture Visual Screenshots for Homepage & Selected Internal Pages
+  const homepageEvidence = {
+    url: cleanUrl,
+    pageTitle: metaTitle || brandName,
+    pageType: 'HOMEPAGE',
+    textEvidence: (headings.slice(0, 8).join(' | ') + ' ' + metaDescription).trim(),
+    headings: headings.slice(0, 8),
+    metadata: { metaTitle, metaDescription },
+    jsonLd: { schemaLogo, schemaName, schemaSlogan, schemaIndustry, schemaAddress }
+  };
+
+  const pagesToScreenshot = [
+    homepageEvidence,
+    ...(deepData?.crawledPageDetails || [])
+  ];
+
+  console.log(`📸 [SCRAPER] Step 5: Capturing visual screenshots for ${pagesToScreenshot.length} pages...`);
+  const pagesEvidence = await capturePageScreenshots(pagesToScreenshot);
+
+  // Enrich deepContextText with Puppeteer live rendered DOM text (Guarantees SPA text support)
+  const puppeteerTextSnippets = pagesEvidence
+    .filter(p => p.textEvidence && p.textEvidence.length > 50)
+    .map(p => `[Page URL: ${p.url}]\nContent: ${p.textEvidence}`);
+
+  if (puppeteerTextSnippets.length > 0) {
+    deepContextText = (deepContextText + '\n\n' + puppeteerTextSnippets.join('\n\n')).trim();
   }
 
   brandColors = colorsResult;
@@ -651,7 +958,8 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
     phones,
     hqAddress: hqAddress || '',
     deepContextText,
-    crawledSources
+    crawledSources,
+    pagesEvidence
   };
 
 }

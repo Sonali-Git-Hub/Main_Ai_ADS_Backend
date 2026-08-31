@@ -1,6 +1,8 @@
 /**
- * AI Ads Domain Web Scraper Engine (Simulated / Production Scraper Interface)
- * Extracts OpenGraph metadata, CSS colors, company summary, and generates positioning memory.
+ * LEGACY / MOCK SCRAPER HELPER (OBSOLETE)
+ * ⚠️ WARNING: This file contains synthetic mock data for offline testing.
+ * Production Brand DNA flow uses `modules/workspace/scraper.service.js` & `modules/brandDnaAgent/`.
+ * Production code must NEVER import this file for factual Brand DNA generation.
  */
 
 async function scrapeDomainUrl(url) {

@@ -74,9 +74,34 @@ const chatWithGemini = async (messages, options = {}) => {
 
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
+      const parts = [{ text: m.content }];
+
+      // Multimodal Image Attachment Support for Gemini / Vertex AI
+      if (options.images && Array.isArray(options.images) && i === messages.length - 1) {
+        const validImages = options.images.filter(img => img && (img.base64 || img.data || (typeof img === 'string' && img.length > 50)));
+        if (validImages.length > 0) {
+          let totalBytes = 0;
+          validImages.forEach((img) => {
+            const rawB64 = typeof img === 'string' ? img : (img.base64 || img.data);
+            const mimeType = (typeof img === 'object' && img.mimeType) ? img.mimeType : 'image/png';
+            if (rawB64) {
+              const cleanB64 = rawB64.replace(/^data:image\/\w+;base64,/, '').trim();
+              parts.push({
+                inlineData: {
+                  mimeType: mimeType,
+                  data: cleanB64
+                }
+              });
+              totalBytes += cleanB64.length;
+            }
+          });
+          console.log(`[AI-MULTIMODAL] 📸 Attached ${validImages.length} image(s) to Gemini request (Total payload: ${Math.round(totalBytes / 1024)} KB)`);
+        }
+      }
+
       contents.push({
         role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.content }],
+        parts,
       });
     }
 
