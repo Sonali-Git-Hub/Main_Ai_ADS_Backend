@@ -69,38 +69,47 @@ exports.generateSocialPost = async (req, res) => {
 
     const brandContext = await getBrandContext(workspaceId, brandName);
 
-    const prompt = `You are a world-class social media strategist and copywriter.
-Write a highly engaging ${platform} ${postType} post about: "${topic}".
+    const prompt = `You are an Elite Chief Copywriter, Growth Hacker, and Visual Creative Director.
+Generate a high-converting, publication-ready ${platform} ${postType} post about: "${topic}".
 
-Tone: ${tone}
-${brandContext ? `BRAND CONTEXT (MANDATORY TO REFLECT IN POST):
-${brandContext}` : ''}
+Tone of Voice: ${tone}
+Target Platform: ${platform}
+Post Type / Format: ${postType}
+${brandContext ? `═══════════════════════════════════════════════════════
+BRAND DNA CONTEXT:
+${brandContext}
+═══════════════════════════════════════════════════════` : ''}
 
-CRITICAL RULES:
-1. Ensure the post is 100% tailored to the brand, products, tone, and audience described in Brand Context.
-2. DO NOT use generic software or unrelated placeholder topics unless specified.
+CRITICAL COPYWRITING & SEO DIRECTIVES:
+1. HOOK: Write a pattern-interrupt hook (First 3 seconds / 2 lines) that stops scrolling immediately.
+2. CAPTION COPY: Use the PAS (Problem-Agitate-Solve) or AIDA (Attention-Interest-Desire-Action) framework. Deliver genuine value and weave the brand's unique value proposition seamlessly.
+3. SEO & KEYWORDS: Naturally integrate 2-3 high-ranking search intent keywords into the body copy.
+4. CTA (Call To Action): Create an irresistible, friction-free action step (e.g. "Comment 'GUIDE' for link", "Save this post for later", or "Tap bio link").
+5. HASHTAGS: Provide 10-12 curated hashtags: 3 brand tags, 5 high-intent niche tags, and 3 viral community tags.
+6. IMAGE PROMPT: Write a photorealistic, studio-quality commercial photography prompt (e.g., "85mm lens, soft studio lighting, ultra-detailed textures, clean aesthetic, 8k resolution").
 
-Return JSON with exact keys:
+Return a JSON object with this exact structure:
 {
-  "hook": "punchy attention-grabbing hook line for ${topic}",
-  "shortCaption": "short concise caption (under 150 chars)",
-  "caption": "full engaging caption tailored specifically to the brand",
-  "longCaption": "extended detailed post caption with value points",
-  "cta": "strong call to action matching the brand goals",
-  "hashtags": ["#Hashtag1", "#Hashtag2", "#Hashtag3"],
+  "hook": "Unstoppable attention-grabbing hook line for ${topic}",
+  "shortCaption": "Crisp, concise version under 150 characters",
+  "caption": "Full high-converting, formatted post with line breaks and emojis",
+  "longCaption": "Deep-dive value post with structured bullet points and takeaways",
+  "cta": "Irresistible, clear call to action tailored to conversion goal",
+  "hashtags": ["#BrandTag", "#NicheTag1", "#NicheTag2", "#NicheTag3", "#ViralTag1"],
+  "seoKeywords": ["Primary Keyword", "Secondary Keyword", "Search Intent Term"],
   "creativeVariations": [
     {
       "type": "STORYTELLING ANGLE",
-      "text": "narrative storytelling perspective on ${topic}"
+      "text": "Narrative personal/founder storytelling perspective on ${topic}"
     },
     {
-      "type": "PROBLEM-SOLUTION",
-      "text": "problem-solution perspective on ${topic}"
+      "type": "PROBLEM-SOLUTION (PAS)",
+      "text": "High-urgency problem-agitate-solution perspective on ${topic}"
     }
   ],
-  "imagePrompt": "detailed photography & visual prompt for generating brand image",
-  "bestTimeToPost": "e.g. 9-11 AM EST",
-  "expectedEngagement": "High"
+  "imagePrompt": "Commercial advertising photography of ${topic} for brand, 85mm f/1.8 lens, cinematic lighting, 8k resolution, award-winning editorial look",
+  "bestTimeToPost": "Recommended peak time for ${platform}",
+  "expectedEngagement": "High ROI & Virality"
 }`;
 
     const result = await generateJSON(prompt, { model, temperature: 0.85 });

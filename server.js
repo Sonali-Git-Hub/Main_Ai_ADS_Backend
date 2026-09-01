@@ -39,6 +39,7 @@ const websiteBuilderRoutes = require('./routes/websiteBuilderRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const telemetryRoutes = require('./routes/telemetryRoutes');
 const accountRoutes = require('./routes/accountRoutes');
+const seoRoutes = require('./routes/seoRoutes');
 
 const app = express();
 const httpServer = createServer(app);
@@ -437,9 +438,8 @@ app.use('/api/content', contentRoutes);
 app.use('/api/website-builder', websiteBuilderRoutes);
 app.use('/api/admin', adminRoutes);
 
-// SEO route (new path uses contentController, keep old path for backward compat)
-const contentController = require('./controllers/contentController');
-app.post('/api/seo/brief/generate', contentController.generateSeoBrief);
+// SEO Intelligence routes (AI-powered keyword clustering, regeneration, brief generation)
+app.use('/api/seo', seoRoutes);
 
 // Auto-Pilot Pipeline (SSE-based full orchestrator)
 const autopilotController = require('./controllers/autopilotController');
@@ -748,129 +748,156 @@ app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
     const brandName = workspace.brandName || brandProfile?.companyName || 'our brand';
     const industry = workspace.industryCategory || brandProfile?.structuredIdentity?.industry || 'General';
     const tagline = workspace.tagline || brandProfile?.structuredIdentity?.tagline || '';
-    const pillars = workspace.contentPillars || brandProfile?.structuredIdentity?.content_angles || [];
-    const audienceStr = (workspace.targetAudience || []).join(', ') || brandProfile?.structuredIdentity?.target_audience || 'General public';
+    const positioning = workspace.positioningSummary || brandProfile?.structuredIdentity?.positioning || '';
+    const mission = workspace.missionStatement || brandProfile?.structuredIdentity?.mission || '';
+    const pillars = (workspace.contentPillars && workspace.contentPillars.length > 0)
+      ? workspace.contentPillars
+      : brandProfile?.structuredIdentity?.content_angles || [];
+    const competitors = (workspace.competitorLandscape && workspace.competitorLandscape.length > 0)
+      ? workspace.competitorLandscape.join(', ')
+      : 'Top industry competitors & alternatives';
+    const audienceStr = (workspace.targetAudience || []).join(', ') || brandProfile?.structuredIdentity?.target_audience || 'Target buyers & consumers';
 
     console.log(`[Strategy Engine] Generating AI Marketing Roadmap for: ${brandName} (${industry})...`);
 
-    const prompt = `You are a world-class growth marketer and brand strategist. Generate a highly customized, actionable, premium 30-day marketing strategy and roadmap for the following brand:
-Brand Name: ${brandName}
-Industry: ${industry}
-Tagline: ${tagline}
-Content Pillars: ${pillars.join(', ')}
-Target Audience: ${audienceStr}
+    const prompt = `You are a Chief Marketing Officer (CMO) and Growth Strategist.
+Generate a comprehensive, actionable, premium 30-day marketing strategy and roadmap for this brand:
 
-You must return a JSON object with this exact structure:
+═══════════════════════════════════════════════════════
+BRAND DNA & COMPETITOR CONTEXT:
+- Brand Name: "${brandName}"
+- Industry / Sector: "${industry}"
+- Tagline: "${tagline}"
+- Positioning: "${positioning}"
+- Mission Statement: "${mission}"
+- Content Pillars / Angles: ${pillars.join(', ')}
+- Target Audience Personas: ${audienceStr}
+- Competitor Landscape: ${competitors}
+═══════════════════════════════════════════════════════
+
+CRITICAL GENERATION RULES:
+1. Generate specific, authentic marketing assets tailored uniquely to "${brandName}" in "${industry}".
+2. DO NOT use generic filler text like "The Authority Series", "Pillar 1", or "Key Insights for Brand".
+3. Provide realistic channel distribution percentages (e.g. for B2C food/fashion: heavy Instagram, YouTube, SEO; for B2B tech: heavy LinkedIn, SEO, Email).
+4. Generate an array "thirtyDayPlan" of 30 DISTINCT daily content items (Day 1 to 30) with varied creative formats, hooks, and specific topics.
+
+Return a JSON object with this exact structure:
 {
-  "businessGoal": "A single specific, measurable business goal (e.g., 'Scale Organic Lead Pipeline by 200% & Drive Enterprise Demos')",
-  "leadMagnet": "A high-converting lead magnet or conversion offer (e.g., 'The 2026 Enterprise AI Content Playbook (PDF)')",
-  "primaryCta": "The main Call To Action for campaigns",
-  "postingFrequency": "Recommended frequency (e.g., 'Daily' or '3x per week')",
-  "budgetSuggestions": "Strategic budget distribution advice for organic vs paid spend",
-  "bestPlatforms": ["Platform1", "Platform2", "Platform3"],
-  "contentPillars": ["Pillar 1", "Pillar 2", "Pillar 3"],
+  "businessGoal": "Specific, measurable 90-day growth goal with metrics tailored to ${brandName}",
+  "leadMagnet": "High-converting lead magnet, free guide, template, or interactive tool tailored to ${brandName}",
+  "primaryCta": "High-intent primary call-to-action for landing pages and social campaigns",
+  "postingFrequency": "Optimal posting frequency based on category (e.g. 'Daily (7x / week)' or '5x / week')",
+  "budgetSuggestions": "Strategic budget split between organic SEO, social distribution, and paid retargeting",
+  "bestPlatforms": ["Top Platform 1", "Top Platform 2", "Top Platform 3", "Top Platform 4"],
+  "contentPillars": ["Pillar 1", "Pillar 2", "Pillar 3", "Pillar 4"],
   "channelMix": [
-    { "label": "SEO Blogs (Long-Form)", "pct": 40, "icon": "Globe" },
-    { "label": "LinkedIn & Founder Copy", "pct": 30, "icon": "Linkedin" },
-    { "label": "Email Newsletters", "pct": 15, "icon": "Mail" },
-    { "label": "Instagram & Reels Copy", "pct": 15, "icon": "Instagram" }
+    { "label": "Channel 1", "pct": 35, "icon": "Globe" },
+    { "label": "Channel 2", "pct": 30, "icon": "Linkedin" },
+    { "label": "Channel 3", "pct": 20, "icon": "Instagram" },
+    { "label": "Channel 4", "pct": 15, "icon": "Mail" }
   ],
-  "audience": ["Persona 1: Description", "Persona 2: Description"],
+  "audience": [
+    "Persona 1: Specific demographic, pain point, and buying trigger",
+    "Persona 2: Specific demographic, pain point, and buying trigger",
+    "Persona 3: Specific demographic, pain point, and buying trigger"
+  ],
   "funnel": {
-    "awareness": "Top of funnel strategy to drive traffic (using pillars)",
-    "nurturing": "Middle of funnel strategy to capture leads via the lead magnet",
-    "conversion": "Bottom of funnel strategy to convert leads using case studies and testimonials"
+    "awareness": "Top-of-funnel viral hook, organic search, and educational reach strategy for ${brandName}",
+    "nurturing": "Middle-of-funnel engagement, case study, and lead capture strategy",
+    "conversion": "Bottom-of-funnel direct-response, social proof, and transactional offer strategy"
   },
   "campaignIdeas": [
-    { "title": "Campaign 1 Title", "desc": "Brief campaign concept and goal" },
-    { "title": "Campaign 2 Title", "desc": "Brief campaign concept and goal" }
+    { "title": "Campaign 1 Name", "desc": "Compelling campaign concept, target angle, and business outcome" },
+    { "title": "Campaign 2 Name", "desc": "Compelling campaign concept, target angle, and business outcome" },
+    { "title": "Campaign 3 Name", "desc": "Compelling campaign concept, target angle, and business outcome" }
   ],
   "thirtyDayPlan": [
-    { "day": 1, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 1 Topic", "actionItem": "Specific action item for today" },
-    { "day": 2, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 2 Topic", "actionItem": "Specific action item for today" },
-    { "day": 3, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 3 Topic", "actionItem": "Specific action item for today" },
-    { "day": 4, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 4 Topic", "actionItem": "Specific action item for today" },
-    { "day": 5, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 5 Topic", "actionItem": "Specific action item for today" },
-    { "day": 6, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 6 Topic", "actionItem": "Specific action item for today" },
-    { "day": 7, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 7 Topic", "actionItem": "Specific action item for today" },
-    { "day": 8, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 8 Topic", "actionItem": "Specific action item for today" },
-    { "day": 9, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 9 Topic", "actionItem": "Specific action item for today" },
-    { "day": 10, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 10 Topic", "actionItem": "Specific action item for today" },
-    { "day": 11, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 11 Topic", "actionItem": "Specific action item for today" },
-    { "day": 12, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 12 Topic", "actionItem": "Specific action item for today" },
-    { "day": 13, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 13 Topic", "actionItem": "Specific action item for today" },
-    { "day": 14, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 14 Topic", "actionItem": "Specific action item for today" },
-    { "day": 15, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 15 Topic", "actionItem": "Specific action item for today" },
-    { "day": 16, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 16 Topic", "actionItem": "Specific action item for today" },
-    { "day": 17, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 17 Topic", "actionItem": "Specific action item for today" },
-    { "day": 18, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 18 Topic", "actionItem": "Specific action item for today" },
-    { "day": 19, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 19 Topic", "actionItem": "Specific action item for today" },
-    { "day": 20, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 20 Topic", "actionItem": "Specific action item for today" },
-    { "day": 21, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 21 Topic", "actionItem": "Specific action item for today" },
-    { "day": 22, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 22 Topic", "actionItem": "Specific action item for today" },
-    { "day": 23, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 23 Topic", "actionItem": "Specific action item for today" },
-    { "day": 24, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 24 Topic", "actionItem": "Specific action item for today" },
-    { "day": 25, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 25 Topic", "actionItem": "Specific action item for today" },
-    { "day": 26, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 26 Topic", "actionItem": "Specific action item for today" },
-    { "day": 27, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 27 Topic", "actionItem": "Specific action item for today" },
-    { "day": 28, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 28 Topic", "actionItem": "Specific action item for today" },
-    { "day": 29, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 29 Topic", "actionItem": "Specific action item for today" },
-    { "day": 30, "platform": "LinkedIn / Blog / Email / Instagram", "topic": "Day 30 Topic", "actionItem": "Specific action item for today" }
+    {
+      "day": 1,
+      "platform": "Instagram / LinkedIn / SEO Blog / Email / YouTube",
+      "topic": "Catchy daily content title",
+      "pillar": "Related content pillar",
+      "actionItem": "Specific creative guideline, hook angle, or call to action for the content creator"
+    }
   ]
-}`;
+}
+
+Ensure "thirtyDayPlan" contains 30 distinct daily items from day 1 to 30.
+Return ONLY valid JSON.`;
 
     let strategy = null;
     try {
-      const aiResponse = await generateJSON(prompt, { temperature: 0.75 });
+      const aiResponse = await generateJSON(prompt, { temperature: 0.7 });
       strategy = aiResponse?.data || (aiResponse && typeof aiResponse === 'object' && !aiResponse.data ? aiResponse : null);
     } catch (aiErr) {
-      console.warn('[Strategy Engine] AI synthesis error, using strategy fallback builder:', aiErr.message);
+      console.warn('[Strategy Engine] AI synthesis error, using brand-specific fallback builder:', aiErr.message);
     }
 
-    // ─── GUARANTEED 30-DAY STRATEGY FALLBACK BUILDER ─────────────────────────
-    if (!strategy || !Array.isArray(strategy.thirtyDayPlan) || strategy.thirtyDayPlan.length === 0) {
-      console.log(`[Strategy Engine] Building fallback 30-day strategy plan for ${brandName}...`);
+    // ─── GUARANTEED BRAND-SPECIFIC STRATEGY FALLBACK BUILDER ─────────────────────────
+    if (!strategy || !Array.isArray(strategy.thirtyDayPlan) || strategy.thirtyDayPlan.length < 10) {
+      console.log(`[Strategy Engine] Building rich brand strategy plan for ${brandName}...`);
+      const isFood = industry.toLowerCase().includes('food') || industry.toLowerCase().includes('beverage') || brandName.toLowerCase().includes('nestle');
+      const isTech = industry.toLowerCase().includes('tech') || industry.toLowerCase().includes('ai') || industry.toLowerCase().includes('software');
+
       const defaultTopics = (pillars && pillars.length > 0)
         ? pillars
-        : [`${brandName} Core Value & USP`, `Industry Insights in ${industry}`, `Customer Case Studies & Proof`, `Product Deep Dives`];
-      const defaultPlatforms = ['SEO Blogs (Long-Form)', 'LinkedIn', 'Instagram & Reels', 'Email Newsletter'];
+        : (isFood
+            ? ['Premium Coffee & Beverages', 'Nutrition & Health Standards', 'Quick Recipes & Cooking Hacks', 'Sustainable Sourcing Proof']
+            : ['AI Automation & Velocity', 'Enterprise Data Governance', 'Content Operations Playbook', 'Customer ROI Case Studies']);
+
+      const defaultPlatforms = isFood
+        ? ['Instagram & Reels Copy', 'SEO Blogs (Long-Form)', 'YouTube Shorts', 'Email Newsletters']
+        : ['LinkedIn & Founder Copy', 'SEO Blogs (Long-Form)', 'Email Newsletters', 'Twitter/X & Short-Form'];
 
       const fallbackPlan = Array.from({ length: 30 }, (_, i) => {
         const day = i + 1;
         const pillar = defaultTopics[i % defaultTopics.length];
         const platform = defaultPlatforms[i % defaultPlatforms.length];
+        const week = Math.ceil(day / 7);
+        const stage = week === 1 ? 'Awareness' : week === 2 ? 'Consideration' : week === 3 ? 'Engagement' : 'Conversion';
+        
         return {
           day,
           platform,
-          topic: `Day ${day}: ${pillar} — Strategic Focus for ${brandName}`,
+          topic: `Day ${day}: Master ${pillar} — ${stage} Strategy for ${brandName}`,
           pillar,
-          actionItem: `Publish ${platform} content driving awareness around ${pillar} in the ${industry} sector.`
+          actionItem: `Publish ${platform} highlighting ${pillar} differentiators to outrank competitors and capture customer consideration.`
         };
       });
 
       strategy = {
-        businessGoal: `Scale ${brandName}'s Organic Lead Pipeline by 200% & Establish Market Leadership in ${industry}`,
-        leadMagnet: `The ${brandName} 2026 Executive Growth Guide & Industry Playbook (PDF)`,
-        primaryCta: `Discover ${brandName}'s Solutions — Get Started Free Today`,
-        postingFrequency: 'Daily',
-        budgetSuggestions: '60% Organic content marketing & SEO / 40% Paid micro-targeting & retargeting.',
-        bestPlatforms: ['LinkedIn', 'Google SEO Blog', 'Email Newsletter', 'Instagram & Reels'],
+        businessGoal: `Scale ${brandName}'s Organic Customer Acquisition & Revenue Pipeline in ${industry}`,
+        leadMagnet: `The 2026 ${brandName} Consumer & Executive Buyer's Playbook (Free Digital PDF)`,
+        primaryCta: `Explore ${brandName} Official Catalog & Special Offers`,
+        postingFrequency: 'Daily (7 posts / week across primary channels)',
+        budgetSuggestions: '55% Organic content marketing & SEO / 35% Social acquisition / 10% Retargeting & CRM.',
+        bestPlatforms: defaultPlatforms.map(p => p.split('(')[0].trim()),
         contentPillars: defaultTopics,
-        channelMix: [
-          { label: 'SEO Blogs (Long-Form)', pct: 40, icon: 'Globe', color: 'bg-brand-500' },
-          { label: 'LinkedIn & Founder Copy', pct: 30, icon: 'Linkedin', color: 'bg-blue-500' },
-          { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' },
-          { label: 'Instagram & Reels Copy', pct: 15, icon: 'Instagram', color: 'bg-rose-500' }
+        channelMix: isFood ? [
+          { label: 'Instagram & Reels Copy', pct: 35, icon: 'Instagram', color: 'bg-rose-500' },
+          { label: 'SEO Blogs (Long-Form)', pct: 30, icon: 'Globe', color: 'bg-brand-500' },
+          { label: 'YouTube Shorts & Video', pct: 20, icon: 'Globe', color: 'bg-red-500' },
+          { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' }
+        ] : [
+          { label: 'LinkedIn & Founder Copy', pct: 40, icon: 'Linkedin', color: 'bg-blue-500' },
+          { label: 'SEO Blogs (Long-Form)', pct: 30, icon: 'Globe', color: 'bg-brand-500' },
+          { label: 'Email Newsletters', pct: 20, icon: 'Mail', color: 'bg-amber-500' },
+          { label: 'Instagram & Short-Form', pct: 10, icon: 'Instagram', color: 'bg-rose-500' }
         ],
-        audience: [`Primary Decision Makers in ${industry}`, `Growth Marketers & Category Buyers`],
+        audience: [
+          `Primary Household Buyers & Category Consumers searching for reliable quality in ${industry}`,
+          `Health-conscious & Premium Product Shoppers looking for authentic ingredients and value`,
+          `Commercial & Bulk Order Decision-Makers seeking wholesale and subscription convenience`
+        ],
         funnel: {
-          awareness: `Top-of-funnel educational content using ${brandName}'s core pillars to maximize audience reach.`,
-          nurturing: `Middle-of-funnel lead magnet guides and email automation to build trust and capture qualified leads.`,
-          conversion: `Bottom-of-funnel case studies, product spotlights, and customer proof to convert pipeline into active buyers.`
+          awareness: `Top-of-funnel educational videos and SEO recipe/trend guides to capture broad search demand for ${brandName}.`,
+          nurturing: `Middle-of-funnel customer reviews, comparison proof, and downloadable guide to nurture high-intent prospects.`,
+          conversion: `Bottom-of-funnel limited-time offers, direct-to-consumer checkout incentives, and subscription bundles.`
         },
         campaignIdeas: [
-          { title: `${brandName} Industry Dominance Series`, desc: `Authority-building thought leadership content demonstrating category leadership.` },
-          { title: `Lead Magnet Conversion Push`, desc: `High-intent opt-in campaign driving downloadable guide downloads.` }
+          { title: `${brandName} Quality & Origin Spotlight`, desc: `Interactive storytelling showcasing sustainable sourcing and premium ingredients.` },
+          { title: `Taste & Performance Challenge`, desc: `User-generated content campaign encouraging consumers to share their daily routine.` },
+          { title: `Direct-to-Consumer Subscription Launch`, desc: `Exclusive bundle discount driving recurring subscription orders.` }
         ],
         thirtyDayPlan: fallbackPlan
       };
@@ -1053,93 +1080,7 @@ app.post('/api/brand/regenerate-section', async (req, res) => {
   res.json({ success: true, data: sampleData });
 });
 
-app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
-  const { id } = req.params;
-  try {
-    let ws = null;
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      ws = await Workspace.findById(id);
-    }
-    if (!ws) {
-      ws = await Workspace.findOne({ id });
-    }
-    if (!ws) {
-      ws = memoryWorkspaces.find(w => w.id === id || w._id?.toString() === id) || memoryWorkspaces[0] || {};
-    }
-
-    const brandName = ws.brandName || 'Brand';
-    const industry = ws.industryCategory || 'Consumer Products';
-    const topics = (ws.contentPillars && ws.contentPillars.length > 0)
-      ? ws.contentPillars
-      : [`${brandName} Product Value`, `Industry Trends in ${industry}`, `Customer Proof & Reviews`, `How-to Guides`];
-    const platforms = ['SEO Blog', 'LinkedIn', 'Instagram', 'Email Newsletter'];
-
-    const thirtyDayPlan = Array.from({ length: 30 }, (_, i) => {
-      const day = i + 1;
-      const pillar = topics[i % topics.length];
-      const platform = platforms[i % platforms.length];
-      return {
-        day,
-        title: `Day ${day}: ${pillar} - Key Insights for ${brandName}`,
-        topic: `${pillar} Focus: Essential Strategies & Tips`,
-        platform,
-        pillar,
-        status: 'PLANNED',
-        action: `Publish ${platform} content highlighting ${brandName}'s core value in ${industry}.`
-      };
-    });
-
-    const strategy = {
-      businessGoal: `Scale ${brandName}'s Organic Lead Pipeline by 250% & Elevate ${industry} Brand Authority`,
-      leadMagnet: `${brandName} 2026 Executive Playbook & Buyer's Guide (PDF)`,
-      primaryCta: `Discover ${brandName}'s Solutions — Get Started Free Today`,
-      postingFrequency: 'Daily',
-      budgetSuggestions: '60% Organic content marketing & SEO / 40% Paid micro-targeting & retargeting.',
-      bestPlatforms: ['LinkedIn', 'Google SEO Blog', 'Email Newsletter', 'Instagram & Reels'],
-      contentPillars: topics,
-      campaignIdeas: [
-        { title: `${brandName} Authority Series`, desc: `Long-form thought leadership posts demonstrating domain mastery.` },
-        { title: `Lead Magnet Opt-In Push`, desc: `Direct-response opt-in push using landing page & email funnel.` },
-        { title: `Social Proof Sprint`, desc: `Customer testimonials & case-study carousel posts for trust.` }
-      ],
-      thirtyDayPlan,
-      funnel: {
-        awareness: `Pillar-driven content, SEO optimization, and educational hooks to drive top-of-funnel reach for ${brandName}.`,
-        nurturing: `Interactive guides, how-to value-bombs, and lead magnet resources to capture email subscribers.`,
-        conversion: `Direct sales copy, verified client testimonials, case studies, and primary product benefit pushes.`
-      },
-      audience: Array.isArray(ws.targetAudience) ? ws.targetAudience : [ws.targetAudience || `Target consumers in ${industry}`]
-    };
-
-    if (ws && ws._id && mongoose.Types.ObjectId.isValid(ws._id)) {
-      await Workspace.findByIdAndUpdate(ws._id, { currentStrategy: strategy });
-    }
-
-    res.json({ success: true, strategy });
-  } catch (err) {
-    console.log('Strategy Generation Error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/seo/brief/generate', async (req, res) => {
-  const brief = await generateSeoBrief(req.body);
-
-  try {
-    await Content.create({
-      title: brief.suggestedTitles[0],
-      type: 'SEO_BRIEF',
-      briefData: brief,
-      author: 'Gemini 3.5 SEO Engine',
-      status: 'APPROVED'
-    });
-    console.log(`🍃 SEO Brief Saved to MongoDB Atlas: "${brief.primaryKeyword}"`);
-  } catch (err) {
-    console.log('SEO Brief DB Save Note:', err.message);
-  }
-
-  res.json({ success: true, brief });
-});
+// SEO brief/generate — handled by seoRoutes (mounted above as /api/seo)
 
 // 3. Content Studio Generation & Fact Check (MongoDB Saved)
 app.post('/api/content/social/generate', async (req, res) => {
