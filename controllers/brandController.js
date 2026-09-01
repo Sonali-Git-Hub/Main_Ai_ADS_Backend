@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const BrandProfile = require('../models/BrandProfile');
 const Workspace = require('../models/Workspace');
 const { generate, generateJSON } = require('../services/aiService');
+const { generateBrandDNA } = require('../modules/workspace/brandIntelligence.service');
 const axios = require('axios');
 const cheerio = require('cheerio');
 
@@ -183,6 +184,7 @@ exports.analyzeBrand = async (req, res) => {
     const brandDna = await generateBrandDNA(websiteUrl, companyName || '');
 
     const brandData = mapPreviewToBrandProfile(brandDna, workspaceId);
+    const finalBrandName = brandData.brandName || companyName || 'Brand Workspace';
 
     delete brandData._id;
     delete brandData.__v;

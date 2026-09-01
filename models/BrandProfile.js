@@ -16,7 +16,7 @@ const BrandProfileSchema = new mongoose.Schema(
     themePreference: { type: String },
     toneOfVoice: { type: mongoose.Schema.Types.Mixed },
     ctaStyle: { type: mongoose.Schema.Types.Mixed },
-    dosAndDonts: { type: String },
+    dosAndDonts: { type: mongoose.Schema.Types.Mixed },
     extractedBrandSummary: { type: String },
     socialMediaLinks: {
       instagram: { type: String },
