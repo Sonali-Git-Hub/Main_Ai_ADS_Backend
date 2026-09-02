@@ -63,11 +63,15 @@ exports.generateSocialPost = async (req, res) => {
       includeHashtags = true,
       includeCTA = true,
       model = 'gemini',
+      customPrompt,
+      prompt: userProvidedPrompt,
+      imagePrompt: userProvidedImagePrompt,
     } = req.body;
 
-    if (!topic) return res.status(400).json({ success: false, error: 'topic is required' });
+    if (!topic && !customPrompt && !userProvidedPrompt) return res.status(400).json({ success: false, error: 'topic or customPrompt is required' });
 
     const brandContext = await getBrandContext(workspaceId, brandName);
+    const activeDirectives = (customPrompt || userProvidedPrompt) ? `\n═══════════════════════════════════════════════════════\nUSER CUSTOM PROMPT & DIRECTIVES:\n${(customPrompt || userProvidedPrompt)}\n═══════════════════════════════════════════════════════` : '';
 
     const prompt = `You are an Elite Chief Copywriter, Growth Hacker, and Visual Creative Director.
 Generate a high-converting, publication-ready ${platform} ${postType} post about: "${topic}".
@@ -78,7 +82,7 @@ Post Type / Format: ${postType}
 ${brandContext ? `═══════════════════════════════════════════════════════
 BRAND DNA CONTEXT:
 ${brandContext}
-═══════════════════════════════════════════════════════` : ''}
+═══════════════════════════════════════════════════════` : ''}${activeDirectives}
 
 CRITICAL COPYWRITING & SEO DIRECTIVES:
 1. HOOK: Write a pattern-interrupt hook (First 3 seconds / 2 lines) that stops scrolling immediately.
@@ -107,7 +111,7 @@ Return a JSON object with this exact structure:
       "text": "High-urgency problem-agitate-solution perspective on ${topic}"
     }
   ],
-  "imagePrompt": "Commercial advertising photography of ${topic} for brand, 85mm f/1.8 lens, cinematic lighting, 8k resolution, award-winning editorial look",
+  "imagePrompt": "${userProvidedImagePrompt || `Commercial advertising photography of ${topic} for ${brandName || 'Brand'}, 85mm f/1.8 lens, cinematic lighting, 8k resolution, award-winning editorial look`}",
   "bestTimeToPost": "Recommended peak time for ${platform}",
   "expectedEngagement": "High ROI & Virality"
 }`;
@@ -180,29 +184,37 @@ exports.generateBlogDraft = async (req, res) => {
       wordCount = 800,
       audience = 'general',
       model = 'gemini',
-      brandName = ''
+      brandName = '',
+      customPrompt,
+      promptInstructions,
     } = req.body;
 
     const title = req.body.title || req.body.topic || req.body.subject || req.body.headline || req.body.prompt;
-    if (!title) return res.status(400).json({ success: false, error: 'title or topic is required' });
+    if (!title && !customPrompt) return res.status(400).json({ success: false, error: 'title or topic is required' });
 
     const brandContext = await getBrandContext(workspaceId);
+    const customBlock = (customPrompt || promptInstructions) ? `\n═══════════════════════════════════════════════════════\nUSER CUSTOM PROMPT & CONTENT DIRECTIVES:\n${customPrompt || promptInstructions}\n═══════════════════════════════════════════════════════` : '';
 
     const prompt = `Write a comprehensive ${wordCount}-word authority SEO blog article:
 
 Brand Name: ${brandName || 'Brand'}
-Topic / Title: "${title}"
+Topic / Title: "${title || 'SEO Blog Article'}"
 Keywords to include: ${Array.isArray(keywords) ? keywords.join(', ') : keywords || 'none specified'}
 Tone: ${tone}
 Target Audience: ${audience}
-${brandContext ? `Brand Context:\n${brandContext}` : ''}
+${brandContext ? `Brand Context:\n${brandContext}` : ''}${customBlock}
+
+Formatting Directives:
+- Write the article in clean, professional plain text with clear headings and paragraphs.
+- DO NOT use markdown symbols like #, ##, ###, ####, asterisks (** or *), or hashtags in the text body.
+- Use clean capitalized headings with clean line breaks instead of markdown symbols.
 
 Return JSON:
 {
   "id": "cnt_${Date.now()}",
   "title": "SEO-optimized title",
   "metaDescription": "150-160 char meta description",
-  "content": "full markdown blog article with H2/H3 headings, intro, key body sections, and conclusion",
+  "content": "Full clean formatted blog article without any # or ** markdown symbols",
   "wordCount": ${wordCount},
   "readingTime": "5 min read",
   "seoScore": 92,
@@ -215,6 +227,24 @@ Return JSON:
     const result = await generateJSON(prompt, { model, temperature: 0.7, maxTokens: 6000 });
     if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
 
+    const draftData = result?.data || result;
+
+    // Clean any residual markdown symbols (#, ##, **, etc.)
+    if (draftData.content && typeof draftData.content === 'string') {
+      draftData.content = draftData.content
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/_([^_]+)_/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/^[\s*_-]{3,}\s*$/gm, '')
+        .replace(/^\*\s+/gm, '• ')
+        .replace(/^-\s+/gm, '• ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
     const factCheck = {
       passed: true,
       score: 96,
@@ -226,17 +256,17 @@ Return JSON:
     try {
       await Content.create({
         workspaceId,
-        title: result.title || title,
+        title: draftData.title || title,
         type: 'BLOG',
-        content: result.content,
-        briefData: result,
-        author: `AI (${model})`,
-        wordCount: result.wordCount,
+        content: draftData.content,
+        briefData: draftData,
+        author: `AI (${result?.model || model})`,
+        wordCount: draftData.wordCount,
         status: 'INTERNAL_REVIEW',
       });
     } catch {}
 
-    res.json({ success: true, draft: result, factCheck });
+    res.json({ success: true, draft: draftData, factCheck });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -362,7 +392,8 @@ Return JSON:
     const result = await generateJSON(prompt, { model, temperature: 0.85 });
     if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
 
-    res.json({ success: true, adPlatform, product, adCopy: result });
+    const adData = result?.data || result;
+    res.json({ success: true, adPlatform, product, adCopy: adData });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

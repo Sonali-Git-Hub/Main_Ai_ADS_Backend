@@ -1485,19 +1485,54 @@ app.post('/api/approvals/status', handleApprovalStatusUpdate);
 // ─── ANALYTICS ────────────────────────────────────────────────────────────────
 app.get('/api/analytics/summary', async (req, res) => {
   try {
-    const { workspaceId } = req.query;
-    const filter = workspaceId ? { workspaceId } : {};
+    const { workspaceId, brandName } = req.query;
 
-    // Count from ALL content collections for accurate dashboard stats
+    let targetIds = [];
+    if (workspaceId) {
+      targetIds.push(workspaceId.toString());
+    }
+
+    let brandRegex = null;
+    if (brandName && brandName.trim()) {
+      brandRegex = new RegExp(`^${brandName.trim()}$`, 'i');
+      try {
+        const matchingWorkspaces = await Workspace.find({
+          brandName: brandRegex
+        }).select('_id brandName').lean();
+        matchingWorkspaces.forEach(w => {
+          if (w._id) targetIds.push(w._id.toString());
+        });
+      } catch (e) {}
+    }
+
+    targetIds = [...new Set(targetIds)];
+
+    let filter = {};
+    if (targetIds.length > 0 || brandRegex) {
+      const orConditions = [];
+      if (targetIds.length > 0) {
+        orConditions.push({ workspaceId: { $in: targetIds } });
+      }
+      if (brandRegex) {
+        orConditions.push({ brandName: brandRegex });
+        orConditions.push({ brand: brandRegex });
+        orConditions.push({ 'metadata.brand': brandRegex });
+      }
+      filter = orConditions.length > 1 ? { $or: orConditions } : orConditions[0];
+    }
+
+    // Count strictly for the active brand/workspace
     const [
-      totalCampaigns, activeCampaigns,
+      totalCampaigns, activeCampaigns, completedCampaigns,
       cpTotal, cpApproved, cpGenerated,
       gpTotal, gpApproved,
-      contentTotal, contentApproved
+      contentTotal, contentApproved,
+      blogCount, socialContentCount, emailCount, newspaperCount, adCount
     ] = await Promise.all([
       // Campaign counts
       Campaign.countDocuments(filter),
-      Campaign.countDocuments({ ...filter, status: 'Active' }),
+      Campaign.countDocuments({ ...filter, status: { $in: ['Active', 'ACTIVE', 'running'] } }),
+      Campaign.countDocuments({ ...filter, status: { $in: ['Completed', 'COMPLETED', 'finished'] } }),
       // CampaignPost counts (posts inside campaigns)
       CampaignPost.countDocuments(filter),
       CampaignPost.countDocuments({ ...filter, approvalStatus: 'Approved' }),
@@ -1505,29 +1540,51 @@ app.get('/api/analytics/summary', async (req, res) => {
       // GeneratedPost counts (quick posts, studio posts)
       GeneratedPost.countDocuments(filter),
       GeneratedPost.countDocuments({ ...filter, status: 'approved' }),
-      // Content counts (blog, social, SEO briefs from editorial studio)
+      // Content counts (blog, social, email, press from editorial studio)
       Content.countDocuments(filter),
       Content.countDocuments({ ...filter, status: 'APPROVED' }),
+      // Individual format breakdown
+      Content.countDocuments({ ...filter, type: { $in: ['BLOG', 'SEO_BRIEF', 'blog'] } }),
+      Content.countDocuments({ ...filter, type: { $in: ['SOCIAL', 'social', 'CAROUSEL'] } }),
+      Content.countDocuments({ ...filter, type: { $in: ['EMAIL', 'email'] } }),
+      Content.countDocuments({ ...filter, type: { $in: ['NEWSPAPER', 'newspaper', 'press_release'] } }),
+      Content.countDocuments({ ...filter, type: { $in: ['AD', 'ad_copy'] } }),
     ]);
 
-    // Aggregate totals across all collections
+    // Aggregate totals across all collections for this brand
     const totalGenerated = cpTotal + gpTotal + contentTotal;
     const totalApproved = cpApproved + gpApproved + contentApproved;
-    // "Generated" status posts specifically (content that has been AI-generated)
     const generatedStatusCount = cpGenerated + gpTotal;
+
+    const totalBlogs = blogCount;
+    const totalSocial = gpTotal + cpTotal + socialContentCount;
+    const totalEmails = emailCount;
+    const totalNewspapers = newspaperCount;
+    const totalAds = adCount;
 
     res.json({
       success: true,
       analytics: {
-        campaigns: { total: totalCampaigns, active: activeCampaigns },
+        campaigns: { 
+          total: totalCampaigns, 
+          active: activeCampaigns,
+          completed: completedCampaigns || Math.max(0, totalCampaigns - activeCampaigns)
+        },
         posts: {
           total: totalGenerated,
           approved: totalApproved,
           generated: generatedStatusCount,
-          // Detailed breakdown for debugging / advanced analytics
           campaignPosts: cpTotal,
           generatedPosts: gpTotal,
           contentPosts: contentTotal,
+        },
+        breakdown: {
+          blogs: totalBlogs,
+          social: totalSocial,
+          emails: totalEmails,
+          newspapers: totalNewspapers,
+          ads: totalAds,
+          totalAssets: totalGenerated,
         },
         approvalRate: totalGenerated > 0 ? Math.round((totalApproved / totalGenerated) * 100) : 0,
       },
