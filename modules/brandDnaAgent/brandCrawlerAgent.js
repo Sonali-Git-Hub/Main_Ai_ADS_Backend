@@ -7,8 +7,13 @@
  */
 
 const { scrapeBrandWebsite } = require('../workspace/brandScraper.service');
-const { resolveBrandName, resolveHeadquartersAndLocations, resolveContactInformation, classifySemanticCandidates } = require('../workspace/brandProcessor.service');
+const { resolveBrandName, resolveHeadquartersAndLocations, resolveContactInformation } = require('../workspace/brandProcessor.service');
 const { recordTelemetryEvent } = require('../../services/telemetryService');
+let searchTavily = async () => null;
+try {
+  const tav = require('../../services/tavilyService');
+  if (tav && tav.searchTavily) searchTavily = tav.searchTavily;
+} catch (e) {}
 
 async function runCrawlerAgent(targetUrl, seedBrandName = '') {
   console.log(`[CrawlerAgent] 🔍 Initiating live crawl for: ${targetUrl}`);
@@ -28,8 +33,32 @@ async function runCrawlerAgent(targetUrl, seedBrandName = '') {
   // Resolve Brand Name & HQ using provenance rules
   const brandNameObj = resolveBrandName(scrapedMetadata, seedBrandName, domainName);
   const combinedText = ((domainName || '') + ' ' + (scrapedMetadata.headings || []).join(' ') + ' ' + (scrapedMetadata.metaDescription || '') + ' ' + (scrapedMetadata.aboutPageText || '') + ' ' + (scrapedMetadata.deepContextText || '')).toLowerCase();
-  const hqObj = resolveHeadquartersAndLocations(domainName, brandNameObj.value.toLowerCase(), scrapedMetadata, combinedText, rawUrl);
+  let hqObj = resolveHeadquartersAndLocations(domainName, brandNameObj.value.toLowerCase(), scrapedMetadata, combinedText, rawUrl);
   const contactObj = resolveContactInformation(scrapedMetadata, rawUrl);
+
+  let parentCompanyObj = { value: null, status: 'UNKNOWN', sourceType: 'UNKNOWN', evidence: 'No explicit parent company evidence in website DOM', confidence: 0 };
+
+  // Fallback 1: Web Search Enrichment via Tavily if HQ or Parent Company is missing from site DOM
+  if (!hqObj.headquarters.value || hqObj.headquarters.confidence < 0.5) {
+    try {
+      console.log(`[CrawlerAgent] 🔍 HQ missing from DOM. Triggering web search enrichment for "${brandNameObj.value}"...`);
+      const searchRes = await searchTavily(`"${brandNameObj.value}" corporate headquarters location city country`, 'advanced', 3);
+      if (searchRes && (searchRes.answer || (searchRes.results && searchRes.results.length > 0))) {
+        const text = (searchRes.answer + ' ' + searchRes.results.map(r => r.snippet).join(' ')).trim();
+        if (text.length > 10) {
+          const searchHq = resolveHeadquartersAndLocations(domainName, brandNameObj.value.toLowerCase(), { deepContextText: text, metaDescription: text }, text, rawUrl);
+          if (searchHq?.headquarters?.value) {
+            hqObj = searchHq;
+            hqObj.headquarters.sourceType = 'SEARCH_ENRICHMENT';
+            hqObj.headquarters.evidence = `Retrieved via web search enrichment: "${searchRes.answer || searchRes.results[0].snippet.slice(0, 150)}"`;
+            console.log(`[CrawlerAgent] ✅ HQ Enriched via Web Search: "${hqObj.headquarters.value}"`);
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`[CrawlerAgent] Web Search HQ enrichment note: ${err.message}`);
+    }
+  }
 
   // Extract Core Product / Category Signals
   const rawCandidates = [
@@ -50,7 +79,7 @@ async function runCrawlerAgent(targetUrl, seedBrandName = '') {
     rawUrl,
     domainName,
     brandNameObj,
-    parentCompanyObj: { value: null, status: 'UNKNOWN', sourceType: 'UNKNOWN', evidence: 'No explicit parent company evidence in website DOM', confidence: 0 },
+    parentCompanyObj,
     hqObj: hqObj.headquarters,
     contactObj,
     coreProducts,
