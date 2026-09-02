@@ -23,4 +23,7 @@ router.post('/repurpose', contentController.repurposeContent);
 // Fact check
 router.post('/fact-check', contentController.factCheckContent);
 
+// Direct Attachment Download Proxy
+router.get('/download-asset', contentController.downloadAssetFile);
+
 module.exports = router;

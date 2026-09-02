@@ -480,3 +480,82 @@ Return JSON:
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
+// ─── GET /api/content/download-asset ──────────────────────────────────────────
+const https = require('https');
+const http = require('http');
+
+exports.downloadAssetFile = async (req, res) => {
+  try {
+    const fileUrl = req.query.url;
+    const filenameParam = req.query.filename || 'asset';
+    const cleanFilename = filenameParam.replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
+
+    if (!fileUrl) {
+      return res.status(400).send('Missing url parameter');
+    }
+
+    // Case A: Handle base64 Data URL
+    if (fileUrl.startsWith('data:')) {
+      const matches = fileUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const mimeType = matches[1];
+        const buffer = Buffer.from(matches[2], 'base64');
+        const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('pdf') ? 'pdf' : 'jpg';
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${cleanFilename}.${ext}"`);
+        return res.send(buffer);
+      }
+    }
+
+    // Case B: Handle HTTP / HTTPS Remote Files (bypass CORS & force Attachment Download)
+    const fetchRemote = (targetUrl, redirectCount = 0) => {
+      if (redirectCount > 5) {
+        return res.status(500).send('Too many redirects');
+      }
+
+      const client = targetUrl.startsWith('https') ? https : http;
+      const request = client.get(targetUrl, (remoteRes) => {
+        // Follow Redirects (301, 302, 307, 308)
+        if (remoteRes.statusCode >= 300 && remoteRes.statusCode < 400 && remoteRes.headers.location) {
+          let redirectUrl = remoteRes.headers.location;
+          if (redirectUrl.startsWith('/')) {
+            const parsed = new URL(targetUrl);
+            redirectUrl = `${parsed.protocol}//${parsed.host}${redirectUrl}`;
+          }
+          return fetchRemote(redirectUrl, redirectCount + 1);
+        }
+
+        if (remoteRes.statusCode >= 400) {
+          return res.status(remoteRes.statusCode).send('Failed to fetch remote asset');
+        }
+
+        const mimeType = remoteRes.headers['content-type'] || 'image/jpeg';
+        let ext = 'jpg';
+        if (mimeType.includes('png')) ext = 'png';
+        else if (mimeType.includes('webp')) ext = 'webp';
+        else if (mimeType.includes('gif')) ext = 'gif';
+        else if (mimeType.includes('svg')) ext = 'svg';
+        else if (mimeType.includes('pdf')) ext = 'pdf';
+
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${cleanFilename}.${ext}"`);
+        remoteRes.pipe(res);
+      });
+
+      request.on('error', (err) => {
+        console.error('Remote fetch download error:', err);
+        if (!res.headersSent) {
+          res.status(500).send('Download failed');
+        }
+      });
+    };
+
+    fetchRemote(fileUrl);
+  } catch (err) {
+    console.error('Download asset endpoint error:', err);
+    if (!res.headersSent) {
+      res.status(500).send('Server download error');
+    }
+  }
+};

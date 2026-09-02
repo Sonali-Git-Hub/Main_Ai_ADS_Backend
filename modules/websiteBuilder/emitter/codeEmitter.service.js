@@ -935,7 +935,7 @@ export default function HeroBanner({ section, setActivePage }) {
 
   return (
     <section className="section-block hero-banner-section hero-mesh-bg text-center">
-      <div className="hero-content" style={{ maxWidth: '850px', margin: '0 auto' }}>
+      <div className="hero-content" style={{ maxWidth: '1380px', width: '100%', margin: '0 auto' }}>
         <div className="hero-eyebrow-pill">
           <span className="eyebrow-dot"></span>
           <span>{eyebrow}</span>
