@@ -257,7 +257,7 @@ async function generateBrandAdImage({
   resolvedColors = (resolvedColors && resolvedColors.length > 0) ? resolvedColors : inferBrandColors(resolvedBrandName, resolvedDescription);
 
   // 2. Ad Visual Prompt Engineering
-  const imagePrompt = craftBrandAdPrompt({
+  const imagePrompt = (prompt || customPrompt) ? (prompt || customPrompt).trim() : craftBrandAdPrompt({
     brandName: resolvedBrandName,
     industry: resolvedIndustry,
     tagline: resolvedTagline,
