@@ -2,6 +2,7 @@
  * Campaign Controller
  * Full CRUD + AI-powered campaign planning, post generation, and scheduling.
  */
+const mongoose = require('mongoose');
 const Campaign = require('../models/Campaign');
 const CampaignPost = require('../models/CampaignPost');
 const Workspace = require('../models/Workspace');
@@ -266,10 +267,10 @@ exports.generateCampaignPlan = async (req, res) => {
           campaignStage,
           postObjective,
           prompt: `Create a ${platform} post about: ${topic}. Pillar: ${pillar}. Stage: ${campaignStage}.`,
-          postType: platform === 'instagram' ? 'Image' : platform === 'youtube' ? 'Video' : platform === 'linkedin' ? 'Article' : 'Image',
+          postType: platform === 'email' ? 'Email Copy' : platform === 'instagram' ? 'Image' : platform === 'youtube' ? 'Video' : platform === 'linkedin' ? 'Article' : 'Image',
           carouselImages: 0,
           postFor: pillar || 'Brand Awareness',
-          imagePrompt: `Professional ${platform} visual for: ${topic}`,
+          imagePrompt: platform === 'email' ? null : `Professional ${platform} visual for: ${topic}`,
           captionPrompt: `Write a compelling ${platform} caption for: "${topic}". Focus on ${pillar}. Campaign stage: ${campaignStage}. Include relevant hashtags.`,
           status: 'Draft',
           bestPostingTime: platform === 'linkedin' ? '9:00 AM' : platform === 'instagram' ? '6:00 PM' : '10:00 AM',
@@ -490,7 +491,9 @@ Return JSON: { "caption": "...", "hashtags": ["#tag1", "#tag2"], "cta": "..." }`
 
     // TODO: When image generation service is connected, generate image here
     // For now we mark as generated and return placeholder
-    if (includeImage && post.imagePrompt) {
+    if ((post.platform || '').toLowerCase() === 'email') {
+      updateData.generatedImage = null;
+    } else if (includeImage && post.imagePrompt) {
       updateData.generatedImage = `https://picsum.photos/seed/${post._id}/800/800`;
     }
 
@@ -543,6 +546,232 @@ exports.calculateDates = async (req, res) => {
     const dates = calculatePublishingDates(startDate, endDate, postingFrequency);
     res.json({ success: true, dates: dates.map((d) => d.toISOString().split('T')[0]), count: dates.length });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ─── POST /api/campaigns/:id/generate-strategy ───────────────────────────────
+exports.generateCampaignStrategy = async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) return res.status(404).json({ success: false, error: 'Campaign not found' });
+
+    let workspace = null;
+    let brandProfile = null;
+    if (mongoose.Types.ObjectId.isValid(campaign.workspaceId)) {
+      workspace = await Workspace.findById(campaign.workspaceId);
+      brandProfile = await BrandProfile.findOne({ workspaceId: campaign.workspaceId });
+    }
+
+    const brandName = workspace?.brandName || brandProfile?.companyName || 'Our Brand';
+    const industry = workspace?.industryCategory || brandProfile?.structuredIdentity?.industry || 'Consumer & Enterprise';
+    const tagline = workspace?.tagline || brandProfile?.structuredIdentity?.tagline || '';
+    const positioning = workspace?.positioningSummary || brandProfile?.structuredIdentity?.positioning || '';
+    const mission = workspace?.missionStatement || brandProfile?.structuredIdentity?.mission || '';
+    const pillars = (workspace?.contentPillars && workspace.contentPillars.length > 0)
+      ? workspace.contentPillars
+      : brandProfile?.structuredIdentity?.content_angles || ['Brand Value', 'Product Innovation', 'Customer Proof', 'Industry Trends'];
+    const audienceStr = campaign.targetAudience || (workspace?.targetAudience || []).join(', ') || 'Target buyers & consumers';
+    const platforms = campaign.platforms && campaign.platforms.length > 0 ? campaign.platforms : ['Instagram', 'LinkedIn', 'YouTube', 'Email'];
+
+    // Fetch existing posts of this campaign to use their exact topics
+    const existingPosts = await CampaignPost.find({ campaignId: campaign._id }).sort({ date: 1, createdAt: 1 });
+    const campaignPostTopics = (existingPosts || []).map((p, idx) => {
+      const topicTitle = p.postObjective || p.topic || p.postFor || `Post ${idx + 1}`;
+      const plat = p.platform || platforms[idx % platforms.length];
+      const stage = p.campaignStage || 'Awareness';
+      const pillar = p.postFor || p.contentType || 'General';
+      return {
+        day: idx + 1,
+        topic: topicTitle,
+        platform: plat,
+        stage,
+        pillar,
+        action: p.prompt || p.captionPrompt || `Publish ${plat} post on ${topicTitle}`,
+      };
+    });
+
+    console.log(`[Strategy Engine] Generating Campaign Strategy for: "${campaign.campaignName}" (${brandName}) with ${campaignPostTopics.length} campaign topics...`);
+
+    const existingPostsContext = campaignPostTopics.length > 0 ? `
+═══════════════════════════════════════════════════════
+EXISTING CAMPAIGN POST TOPICS (CRITICAL - USE EXACT SAME TOPICS):
+This campaign already contains the following specific scheduled topics:
+${campaignPostTopics.slice(0, 30).map(t => `- Day ${t.day}: [${t.platform}] "${t.topic}" (Pillar: ${t.pillar}, Stage: ${t.stage})`).join('\n')}
+
+MANDATORY REQUIREMENT FOR "thirtyDayPlan":
+The 30-day strategy plan ("thirtyDayPlan") MUST use these EXACT SAME topics from the campaign for Day 1 to ${Math.min(30, campaignPostTopics.length)}!
+For each day, the "topic" and "title" MUST match the campaign's topic ("${campaignPostTopics[0].topic}", "${campaignPostTopics[1]?.topic || ''}", etc.). DO NOT replace them with generic topics.
+═══════════════════════════════════════════════════════` : '';
+
+    const prompt = `You are a Chief Marketing Officer (CMO) and Lead Growth Strategist.
+Generate a high-converting, actionable, 30-day marketing strategy and roadmap specifically built to execute and achieve this campaign:
+
+═══════════════════════════════════════════════════════
+TARGET CAMPAIGN:
+- Campaign Name: "${campaign.campaignName}"
+- Primary Campaign Goal: "${campaign.campaignGoal}"
+- Target Platforms: ${platforms.join(', ')}
+- Target Audience: ${audienceStr}
+- Posting Frequency: ${campaign.postingFrequency || 'Daily'}
+- Budget: ${campaign.budget ? `₹${campaign.budget}` : 'Optimized Organic + Paid split'}
+═══════════════════════════════════════════════════════${existingPostsContext}
+BRAND DNA CONTEXT:
+- Brand: "${brandName}" (${industry})
+- Tagline: "${tagline}"
+- Positioning: "${positioning}"
+- Mission: "${mission}"
+- Content Pillars: ${pillars.join(', ')}
+═══════════════════════════════════════════════════════
+
+CRITICAL RULES:
+1. Everything must be tailored specifically to achieve "${campaign.campaignGoal}" for "${campaign.campaignName}".
+2. Provide a 30-day tactical calendar ("thirtyDayPlan") mapping days 1 to 30. If campaign topics were provided above, USE THOSE EXACT SAME TOPICS for each day.
+3. Align the funnel (awareness, nurturing, conversion) to direct buyers to this campaign's goal.
+
+Return a JSON object with this exact structure:
+{
+  "businessGoal": "${campaign.campaignGoal.replace(/"/g, "'")}",
+  "leadMagnet": "Specific high-converting lead magnet or incentive tailored to ${campaign.campaignName.replace(/"/g, "'")}",
+  "primaryCta": "Specific call-to-action to convert prospects for ${campaign.campaignName.replace(/"/g, "'")}",
+  "postingFrequency": "${campaign.postingFrequency || 'Daily'}",
+  "budgetSuggestions": "Strategic budget breakdown to achieve ${campaign.campaignGoal.replace(/"/g, "'")}",
+  "bestPlatforms": ${JSON.stringify(platforms)},
+  "contentPillars": ${JSON.stringify(pillars)},
+  "channelMix": [
+    { "label": "${platforms[0] || 'Instagram'}", "pct": 40, "icon": "Instagram" },
+    { "label": "${platforms[1] || 'LinkedIn'}", "pct": 30, "icon": "Linkedin" },
+    { "label": "${platforms[2] || 'YouTube'}", "pct": 20, "icon": "Globe" },
+    { "label": "${platforms[3] || 'Email'}", "pct": 10, "icon": "Mail" }
+  ],
+  "audience": [
+    "Persona 1: Specific demographic and buying trigger for ${campaign.campaignName.replace(/"/g, "'")}",
+    "Persona 2: Specific demographic and buying trigger for ${campaign.campaignName.replace(/"/g, "'")}"
+  ],
+  "funnel": {
+    "awareness": "Top-of-funnel reach strategy tailored for ${campaign.campaignName.replace(/"/g, "'")}",
+    "nurturing": "Middle-of-funnel trust and engagement strategy for ${campaign.campaignName.replace(/"/g, "'")}",
+    "conversion": "Bottom-of-funnel conversion strategy to fulfill ${campaign.campaignGoal.replace(/"/g, "'")}"
+  },
+  "campaignIdeas": [
+    { "title": "${campaign.campaignName.replace(/"/g, "'")} - Core Launch", "desc": "Launch narrative to achieve ${campaign.campaignGoal.replace(/"/g, "'")}" },
+    { "title": "Social Proof & Results Showcase", "desc": "Customer and benchmark proof to drive action" },
+    { "title": "Final Conversion Push", "desc": "Urgency and incentive offer to close target leads" }
+  ],
+  "thirtyDayPlan": [
+    {
+      "day": 1,
+      "platform": "${platforms[0] || 'Instagram'}",
+      "topic": "${campaignPostTopics[0]?.topic || 'Daily content topic for Day 1'}",
+      "pillar": "${campaignPostTopics[0]?.pillar || pillars[0] || 'Awareness'}",
+      "actionItem": "Specific creative guideline or hook"
+    }
+  ]
+}
+
+Ensure "thirtyDayPlan" contains 30 distinct daily items from day 1 to 30.
+Return ONLY valid JSON.`;
+
+    let strategy = null;
+    try {
+      const aiResponse = await generateJSON(prompt, { temperature: 0.7 });
+      strategy = aiResponse?.data || (aiResponse && typeof aiResponse === 'object' && !aiResponse.data ? aiResponse : null);
+    } catch (aiErr) {
+      console.warn('[Strategy Engine] Campaign AI strategy synthesis error, generating fallback:', aiErr.message);
+    }
+
+    if (!strategy || !Array.isArray(strategy.thirtyDayPlan) || strategy.thirtyDayPlan.length < 10) {
+      const fallbackPlan = Array.from({ length: 30 }, (_, i) => {
+        const day = i + 1;
+        const matchingPost = campaignPostTopics[i];
+        const topicName = matchingPost?.topic || `${campaign.campaignName} Day ${day}: ${pillars[i % pillars.length]}`;
+        const pillar = matchingPost?.pillar || pillars[i % pillars.length];
+        const platform = matchingPost?.platform || platforms[i % platforms.length];
+        return {
+          day,
+          title: topicName,
+          topic: topicName,
+          platform,
+          pillar,
+          status: 'PLANNED',
+          actionItem: matchingPost?.action || `Publish ${platform} content targeting ${audienceStr} to support ${campaign.campaignName}.`,
+        };
+      });
+
+      strategy = {
+        businessGoal: campaign.campaignGoal,
+        leadMagnet: `${brandName} ${campaign.campaignName} VIP Guide & Resource Kit`,
+        primaryCta: `Join the ${campaign.campaignName} & Book Today`,
+        postingFrequency: campaign.postingFrequency || 'Daily',
+        budgetSuggestions: `60% Organic Social & Search / 40% Paid Traffic targeting ${audienceStr}`,
+        bestPlatforms: platforms,
+        contentPillars: pillars,
+        channelMix: platforms.map((p, idx) => ({
+          label: p,
+          pct: idx === 0 ? 40 : idx === 1 ? 30 : idx === 2 ? 20 : 10,
+          icon: p.toLowerCase().includes('linked') ? 'Linkedin' : p.toLowerCase().includes('insta') ? 'Instagram' : p.toLowerCase().includes('mail') ? 'Mail' : 'Globe'
+        })),
+        audience: [
+          `Target Segment 1 for ${campaign.campaignName}: Motivated by ${campaign.campaignGoal}`,
+          `Target Segment 2 for ${campaign.campaignName}: Key decision makers looking for ${brandName}`
+        ],
+        funnel: {
+          awareness: `Top-of-funnel reach introducing ${campaign.campaignName} to ${audienceStr}`,
+          nurturing: `Middle-of-funnel proof and educational guides demonstrating ${brandName}'s advantage`,
+          conversion: `Bottom-of-funnel offers and clear CTAs to hit ${campaign.campaignGoal}`
+        },
+        campaignIdeas: [
+          { title: `${campaign.campaignName} Launch Sprint`, desc: `High-impact launch phase across ${platforms.join(', ')}` },
+          { title: `Social Proof Wave`, desc: `Client validation and authority content` },
+          { title: `Conversion Deadline`, desc: `Final incentive to maximize results` }
+        ],
+        thirtyDayPlan: fallbackPlan,
+      };
+    }
+
+    // Force exact campaign topics into thirtyDayPlan so strategy matches campaign 100%
+    if (campaignPostTopics.length > 0 && Array.isArray(strategy.thirtyDayPlan)) {
+      strategy.thirtyDayPlan = strategy.thirtyDayPlan.map((dayItem, idx) => {
+        const match = campaignPostTopics[idx];
+        if (match) {
+          return {
+            ...dayItem,
+            day: idx + 1,
+            title: match.topic,
+            topic: match.topic,
+            platform: match.platform || dayItem.platform || platforms[idx % platforms.length],
+            pillar: match.pillar || dayItem.pillar || pillars[idx % pillars.length],
+            actionItem: dayItem.actionItem || match.action,
+            status: 'PLANNED',
+          };
+        }
+        return dayItem;
+      });
+    }
+
+    // Attach campaign metadata
+    strategy.campaignId = campaign._id.toString();
+    strategy.campaignName = campaign.campaignName;
+    strategy.campaignGoal = campaign.campaignGoal;
+
+    // Save to Campaign model
+    campaign.aiGeneratedStrategy = strategy;
+    await campaign.save();
+
+    // Also sync to Workspace currentStrategy so Strategy Module, Calendar, and Studio can use it immediately!
+    if (mongoose.Types.ObjectId.isValid(campaign.workspaceId)) {
+      await Workspace.findByIdAndUpdate(campaign.workspaceId, { currentStrategy: strategy }, { new: true });
+    }
+
+    console.log(`✅ [Strategy Engine] Strategy successfully created and linked for campaign: "${campaign.campaignName}"`);
+    res.json({
+      success: true,
+      message: `Strategy generated successfully for campaign "${campaign.campaignName}"`,
+      strategy,
+      campaign,
+    });
+  } catch (err) {
+    console.error('[Strategy Engine] Campaign Strategy Error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 };

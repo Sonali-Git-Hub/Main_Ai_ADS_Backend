@@ -44,7 +44,15 @@ async function generateSocialPosts(params) {
   const seed = Math.floor(Math.random() * 1000000);
   const imagePrompt = `${topic} — ${cleanBrand} commercial campaign photography, high-end studio lighting, 8k resolution, photorealistic`;
   const enhancedPrompt = `${imagePrompt}, professional advertising photography, masterwork`;
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?${dimensions}&nologo=true&seed=${seed}`;
+  const { resolveBrandVisualAsset } = require('./brandVisualResolver');
+  const imageUrl = resolveBrandVisualAsset({
+    prompt: enhancedPrompt,
+    brandName: cleanBrand,
+    topic,
+    style: 'Photorealistic Commercial',
+    aspect,
+    variationIndex: seed % 10
+  });
 
   return {
     platform,

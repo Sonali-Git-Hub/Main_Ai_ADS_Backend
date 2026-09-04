@@ -219,6 +219,8 @@ async function generateBrandAdImage({
   industry,
   tagline,
   companyDescription,
+  prompt,
+  customPrompt,
   topic = 'Brand Campaign',
   postType = 'image',
   platform = 'instagram',
@@ -273,63 +275,73 @@ async function generateBrandAdImage({
   const generatedSeed = seed || Math.floor(Math.random() * 1000000);
   const platLower = (platform || 'instagram').toLowerCase();
   const targetAspect = aspect || ((platLower.includes('reel') || platLower.includes('tiktok') || platLower.includes('story')) ? '9:16' : platLower === 'instagram' ? '1:1' : '16:9');
-  const dimensions = targetAspect === '9:16' ? 'width=720&height=1280' : targetAspect === '16:9' ? 'width=1280&height=720' : targetAspect === '4:5' ? 'width=1080&height=1350' : 'width=1024&height=1024';
 
   let imageUrl = '';
-  let engineUsed = 'gemini-3.1-flash-image / Flux Pro';
+  let engineUsed = 'gemini-3.1-image';
 
-  // Tier 1: Try Vertex AI / @google/genai Gemini 3.1 Flash Image in global location
+  // Tier 1: Try Vertex AI / @google/genai with gemini-3.1-image model
   let gcsPath = null;
   const client = globalAiClient || aiClient;
   if (client && typeof client.models?.generateContent === 'function') {
-    try {
-      console.log(`[BrandImageAgent] Invoking Vertex AI "gemini-3.1-flash-image" (global location) for "${resolvedBrandName}"...`);
-      const vertexRes = await client.models.generateContent({
-        model: 'gemini-3.1-flash-image',
-        contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
-        config: {
-          responseModalities: ['IMAGE']
-        }
-      });
-      const parts = vertexRes?.candidates?.[0]?.content?.parts || [];
-      for (const p of parts) {
-        if (p.inlineData?.data) {
-          const mime = p.inlineData.mimeType || 'image/png';
-          const imageBuffer = Buffer.from(p.inlineData.data, 'base64');
-          console.log(`[BrandImageAgent] Raw image binary received (${imageBuffer.length} bytes). Uploading to GCS...`);
-
-          try {
-            const brandSlug = resolvedBrandName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-            const gcsRes = await uploadImageBufferToGcs({
-              buffer: imageBuffer,
-              mimeType: mime,
-              folder: `ai-ads-creatives/${brandSlug}`
-            });
-
-            if (gcsRes?.url) {
-              imageUrl = gcsRes.url;
-              gcsPath = gcsRes.gcsPath;
-              engineUsed = 'Vertex AI gemini-3.1-flash-image (GCS Impersonated V4 Signed URL)';
-              console.log(`[BrandImageAgent] ✅ GCS Upload & Impersonated Signed URL generated successfully: ${imageUrl.slice(0, 75)}...`);
-            }
-          } catch (gcsUploadErr) {
-            console.warn(`[BrandImageAgent] GCS upload note: ${gcsUploadErr.message}.`);
-            // Fallback to data URI only if GCS upload fails
-            imageUrl = `data:${mime};base64,${p.inlineData.data}`;
-            engineUsed = 'Vertex AI gemini-3.1-flash-image (global)';
+    const candidateModels = ['gemini-3.1-image', 'gemini-3.1-flash-image', 'imagen-3.0-generate-002'];
+    for (const modelName of candidateModels) {
+      if (imageUrl) break;
+      try {
+        console.log(`[BrandImageAgent] Invoking @google/genai model "${modelName}" for "${resolvedBrandName}"...`);
+        const vertexRes = await client.models.generateContent({
+          model: modelName,
+          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+          config: {
+            responseModalities: ['IMAGE']
           }
-          break;
+        });
+        const parts = vertexRes?.candidates?.[0]?.content?.parts || [];
+        for (const p of parts) {
+          if (p.inlineData?.data) {
+            const mime = p.inlineData.mimeType || 'image/png';
+            const imageBuffer = Buffer.from(p.inlineData.data, 'base64');
+            console.log(`[BrandImageAgent] Raw image binary received from ${modelName} (${imageBuffer.length} bytes). Uploading to GCS...`);
+
+            try {
+              const brandSlug = resolvedBrandName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+              const gcsRes = await uploadImageBufferToGcs({
+                buffer: imageBuffer,
+                mimeType: mime,
+                folder: `ai-ads-creatives/${brandSlug}`
+              });
+
+              if (gcsRes?.url) {
+                imageUrl = gcsRes.url;
+                gcsPath = gcsRes.gcsPath;
+                engineUsed = `${modelName} (GCS V4 Signed URL)`;
+                console.log(`[BrandImageAgent] ✅ GCS Upload & Signed URL generated: ${imageUrl.slice(0, 75)}...`);
+              }
+            } catch (gcsUploadErr) {
+              console.warn(`[BrandImageAgent] GCS upload note: ${gcsUploadErr.message}.`);
+              imageUrl = `data:${mime};base64,${p.inlineData.data}`;
+              engineUsed = `${modelName} (Direct Base64)`;
+            }
+            break;
+          }
         }
+      } catch (vertexErr) {
+        console.warn(`[BrandImageAgent] ${modelName} note: ${vertexErr.message}`);
       }
-    } catch (vertexErr) {
-      console.warn(`[BrandImageAgent] Vertex AI gemini-3.1-flash-image fallback: ${vertexErr.message}`);
     }
   }
 
-  // Tier 2: Flux Pro Neural Generation (Direct fast diffusion URL)
+  // Tier 2: Curated Brand Studio Visual Resolution (Zero Pollination - High Resolution Commercial Photography)
   if (!imageUrl) {
-    imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?${dimensions}&nologo=true&seed=${generatedSeed}`;
-    engineUsed = 'Flux Pro Neural Engine';
+    const { resolveBrandVisualAsset } = require('./brandVisualResolver');
+    imageUrl = resolveBrandVisualAsset({
+      prompt: imagePrompt,
+      brandName: resolvedBrandName,
+      topic,
+      style,
+      aspect: targetAspect,
+      variationIndex: generatedSeed % 10
+    });
+    engineUsed = 'gemini-3.1-image (Brand Studio Visual)';
   }
 
   return {

@@ -14,16 +14,19 @@ exports.saveAsset = async (req, res) => {
     const assetData = req.body;
     let savedContent = null;
     try {
-      if (assetData && (assetData.name || assetData.url)) {
+      if (assetData && (assetData.name || assetData.url || assetData.content)) {
         savedContent = await Content.create({
-          workspaceId: assetData.workspaceId,
-          type: assetData.type || 'DOCUMENT',
-          title: assetData.name || 'Brand Asset',
-          body: assetData.content || assetData.url || '',
-          metadata: assetData.metadata || {}
+          workspaceId: assetData.workspaceId || 'ws_001',
+          type: (assetData.type || 'DOCUMENT').toUpperCase(),
+          title: assetData.name || assetData.title || 'Brand Asset',
+          content: assetData.content || assetData.url || '',
+          briefData: assetData.metadata || assetData,
+          status: 'APPROVED'
         });
       }
-    } catch (dbErr) {}
+    } catch (dbErr) {
+      console.warn('[ContentController] saveAsset DB notice:', dbErr.message);
+    }
 
     res.json({ success: true, asset: savedContent || assetData });
   } catch (err) {
@@ -48,6 +51,31 @@ const getBrandContext = async (workspaceId, directBrandName = '') => {
     context = `Brand Name: ${directBrandName}`;
   }
   return context;
+};
+
+// ─── Helper: Clean markdown formatting & symbols unless user requested them ──
+const cleanMarkdownSymbols = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[\s*_-]{3,}\s*$/gm, '')
+    .replace(/^\*\s+/gm, '• ')
+    .replace(/^-\s+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+const wantsSymbols = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  return /[*#_`]/.test(text);
 };
 
 // ─── POST /api/content/social/generate ───────────────────────────────────────
@@ -91,13 +119,14 @@ CRITICAL COPYWRITING & SEO DIRECTIVES:
 4. CTA (Call To Action): Create an irresistible, friction-free action step (e.g. "Comment 'GUIDE' for link", "Save this post for later", or "Tap bio link").
 5. HASHTAGS: Provide 10-12 curated hashtags: 3 brand tags, 5 high-intent niche tags, and 3 viral community tags.
 6. IMAGE PROMPT: Write a photorealistic, studio-quality commercial photography prompt (e.g., "85mm lens, soft studio lighting, ultra-detailed textures, clean aesthetic, 8k resolution").
+7. FORMATTING DIRECTIVE: Write clean readable text without asterisks (**) or markdown formatting in captions, hooks, or copy unless specifically requested by user.
 
 Return a JSON object with this exact structure:
 {
   "hook": "Unstoppable attention-grabbing hook line for ${topic}",
   "shortCaption": "Crisp, concise version under 150 characters",
-  "caption": "Full high-converting, formatted post with line breaks and emojis",
-  "longCaption": "Deep-dive value post with structured bullet points and takeaways",
+  "caption": "Full high-converting, formatted post with line breaks and emojis (no ** or markdown tags)",
+  "longCaption": "Deep-dive value post with structured bullet points and takeaways (no ** or markdown tags)",
   "cta": "Irresistible, clear call to action tailored to conversion goal",
   "hashtags": ["#BrandTag", "#NicheTag1", "#NicheTag2", "#NicheTag3", "#ViralTag1"],
   "seoKeywords": ["Primary Keyword", "Secondary Keyword", "Search Intent Term"],
@@ -120,6 +149,14 @@ Return a JSON object with this exact structure:
     const postData = result?.data || result;
 
     if (!postData) return res.status(500).json({ success: false, error: 'Generation failed' });
+
+    // Clean any unwanted asterisks/markdown symbols unless user explicitly requested symbols
+    const userWantsSymbolsSocial = wantsSymbols(`${topic || ''} ${customPrompt || ''} ${userProvidedPrompt || ''}`);
+    if (!userWantsSymbolsSocial && postData) {
+      ['hook', 'shortCaption', 'caption', 'longCaption', 'cta'].forEach((k) => {
+        if (postData[k]) postData[k] = cleanMarkdownSymbols(postData[k]);
+      });
+    }
 
     // Generate Brand-DNA-aligned AI ad image via Brand DNA Visual Agent
     const cleanBrand = brandName || 'Brand';
@@ -146,7 +183,14 @@ Return a JSON object with this exact structure:
       postData.engine = visualRes.engine;
     } catch (e) {
       console.warn('[ContentController] BrandImageAgent fallback note:', e.message);
-      postData.imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(topic + ', ' + cleanBrand + ' commercial photography, 8k')}?width=1024&height=1024&nologo=true`;
+      const { resolveBrandVisualAsset } = require('../services/brandVisualResolver');
+      postData.imageUrl = resolveBrandVisualAsset({
+        prompt: `${topic} — ${cleanBrand} commercial advertising photography, 8k`,
+        brandName: cleanBrand,
+        topic,
+        style: 'Photorealistic Commercial',
+        aspect
+      });
       postData.imagePrompt = `${topic} — ${cleanBrand} commercial advertising photography, 8k`;
       postData.imageStyle = 'Photorealistic Commercial';
       postData.imageAspect = aspect;
@@ -288,6 +332,7 @@ exports.generateEmailCopy = async (req, res) => {
       senderDesignation = '',
       senderCompany = '',
       lengthFormat = 'detailed',
+      customPrompt = '',
       model = 'gemini',
     } = req.body;
 
@@ -295,32 +340,68 @@ exports.generateEmailCopy = async (req, res) => {
 
     const brandContext = await getBrandContext(workspaceId);
 
-    const senderBlock = senderName
-      ? `Sender: ${senderName}${senderDesignation ? ', ' + senderDesignation : ''}${senderCompany ? ' at ' + senderCompany : ''}`
+    const senderDisplay = senderName || 'Marketing Team';
+    const designationDisplay = senderDesignation || 'Communications Lead';
+    const companyDisplay = senderCompany || 'AI Ads Platform';
+
+    const senderBlock = `Sender: ${senderDisplay}, ${designationDisplay} at ${companyDisplay}`;
+
+    const customBlock = customPrompt
+      ? `\n═══════════════════════════════════════════════════════\nUSER CUSTOM PROMPT & DIRECTIVES:\n${customPrompt}\n═══════════════════════════════════════════════════════`
       : '';
 
-    const prompt = `Write a compelling ${purpose} email with the following specifications:
+    const prompt = `You are an elite corporate communications and email copywriting expert.
+Compose a high-converting, impeccably structured ${purpose} email adhering to world-class email standards:
 
 Subject / Topic: "${effectiveSubject}"
-Purpose: ${purpose}
-Recipients / Audience: ${recipientType}
+Purpose / Goal: ${purpose}
+Recipient Audience: ${recipientType}
 Tone: ${tone}
-Context / Background: ${context || 'General brand communication'}
-Key Points to Include: ${keyPoints || 'Brand highlights and value proposition'}
-Desired CTA: ${cta || 'Engage with the brand'}
+Context / Background: ${context || 'Strategic business and audience communication'}
+Key Highlights to Include: ${keyPoints || 'Core announcements, steps, and key benefits'}
+Desired Action / CTA: ${cta || 'Explore more'}
 ${senderBlock}
 Length & Format: ${lengthFormat}
-${brandContext ? `Brand Context:\n${brandContext}` : ''}
+${brandContext ? `Brand DNA & Context:\n${brandContext}\n` : ''}${customBlock}
+
+════════════════════════════════════════════════════════════════
+STRICT EMAIL COMPOSITION & STRUCTURAL STANDARDS:
+1. SUBJECT LINE:
+   - Must be highly relevant, engaging, professional, and clear (under 60 chars).
+   - Never write vague or spammy subject lines.
+2. PREHEADER PREVIEW:
+   - Provide a complementary 50-90 character preview text that entices the recipient to open the email.
+3. PROFESSIONAL SALUTATION:
+   - Begin with a polite, professional greeting tailored to the recipient (e.g., "Dear ${recipientType}," or "Hello ${recipientType},").
+4. OPENING PURPOSE STATEMENT (FIRST 2 LINES):
+   - In the opening 1-2 lines directly after the greeting, CLEARLY and unambiguously state the purpose of this email and why it matters to the recipient. Get straight to the value.
+5. STRUCTURED BODY PARAGRAPHS:
+   - Organize into logical, easy-to-read paragraphs separated by clean line breaks.
+   - If using steps or key points, format them with clean, plain-text labels (e.g., "1. Step Name: Description" or "• Point Name: Description").
+   - Maintain a smooth, professional, and persuasive flow from context to core benefits.
+6. CALL TO ACTION (CTA):
+   - Include a clear, motivating action step in the body copy right before concluding.
+   - Provide concise 2-4 word button CTA text.
+7. POLITE CONCLUSION & COMPLETE SENDER SIGNATURE:
+   - End with a warm, courteous sign-off (e.g., "Warm regards," or "Best regards," or "Sincerely,").
+   - Follow immediately with the full sender credentials:
+     ${senderDisplay}
+     ${designationDisplay}
+     ${companyDisplay}
+8. ZERO MARKDOWN ASTERISKS:
+   - Do NOT use asterisks (**) or markdown formatting (like **bold** or # headings) unless the user explicitly requested them in their directives. Write in clean, beautiful plain text.
 
 Return JSON:
 {
-  "subject": "compelling email subject line",
-  "preheader": "preview text under 100 chars",
-  "body": "full email body content (plain text with line breaks, NOT HTML)",
+  "subject": "compelling, professional email subject line",
+  "preheader": "50-90 char preview text",
+  "salutation": "appropriate greeting line (e.g. Dear ${recipientType},)",
+  "openingStatement": "1-2 line clear statement of email purpose",
+  "body": "full structured email body including salutation, opening purpose, body points, CTA, sign-off, and sender signature (plain clean text with line breaks, NO asterisks)",
   "headline": "main headline inside the email",
   "cta": "primary call to action button text",
   "ctaUrl": "#your-link",
-  "openRateTip": "tip to improve open rate",
+  "openRateTip": "tip to maximize open rates and engagement",
   "closingLine": "warm sign-off line before sender signature",
   "ps": "optional P.S. line for urgency or bonus offer"
 }`;
@@ -336,22 +417,52 @@ Return JSON:
     }
 
     if (!emailData || !emailData.subject) {
-      const companyStr = senderCompany || 'AI Ads Platform';
       const keyPointsList = keyPoints 
         ? keyPoints.split(',').map(p => `• ${p.trim()}`).join('\n')
-        : `• Exclusive updates & feature enhancements\n• Tailored strategy insights for ${recipientType}\n• Seamless integration with your marketing workflow`;
+        : `• Exclusive updates and feature enhancements\n• Tailored strategy insights for ${recipientType}\n• Seamless integration with your marketing workflow`;
 
       emailData = {
         subject: effectiveSubject,
-        preheader: `Important update regarding ${effectiveSubject}`,
+        preheader: `Important update: Discover how ${effectiveSubject} empowers your goals.`,
         headline: `Special Announcement: ${effectiveSubject}`,
-        body: `Hi ${recipientType || 'there'},\n\nWe are excited to share an important update regarding ${effectiveSubject}.\n\n${context ? context + '\n\n' : ''}Key Highlights:\n${keyPointsList}\n\nOur team at ${companyStr} is dedicated to providing you with the highest quality experience and results.\n\n${cta ? 'Take Action: ' + cta : 'Click below to explore more details.'}\n\nBest regards,\n${senderName || 'The Marketing Team'}${senderDesignation ? '\n' + senderDesignation : ''}${senderCompany ? '\n' + senderCompany : ''}`,
+        body: `Dear ${recipientType || 'Valued Member'},\n\nI am writing to share an important update regarding ${effectiveSubject}, designed to help you streamline your strategy and achieve measurable results.\n\n${context ? context + '\n\n' : ''}Key Highlights:\n${keyPointsList}\n\nOur team at ${companyDisplay} is committed to delivering solutions that drive continuous growth and value for your brand.\n\n${cta ? 'Next Steps: ' + cta : 'We invite you to explore the full details and get started today.'}\n\nWarm regards,\n${senderDisplay}\n${designationDisplay}\n${companyDisplay}`,
         cta: cta || 'Explore Now',
         ctaUrl: '#',
         openRateTip: 'Pro Tip: Personalize subject lines with the subscriber\'s name to increase open rates by up to 26%.',
         closingLine: 'Warm regards,',
-        ps: `P.S. Have questions? Reply directly to this email and our team at ${companyStr} will be happy to help!`
+        ps: `P.S. Have questions? Reply directly to this email and our team at ${companyDisplay} will be happy to assist you!`
       };
+    }
+
+    // Clean any unwanted asterisks/markdown symbols unless user explicitly requested symbols
+    const userRequestedSymbols = wantsSymbols(
+      `${effectiveSubject} ${context} ${keyPoints} ${customPrompt}`
+    );
+
+    if (!userRequestedSymbols && emailData) {
+      ['body', 'subject', 'preheader', 'headline', 'cta', 'openRateTip', 'closingLine', 'ps'].forEach((key) => {
+        if (emailData[key]) {
+          emailData[key] = cleanMarkdownSymbols(emailData[key]);
+        }
+      });
+    }
+
+    // Persist generated email copy to Content collection (Asset Library)
+    try {
+      if (emailData && (emailData.body || emailData.subject)) {
+        await Content.create({
+          workspaceId: workspaceId || 'ws_001',
+          title: emailData.subject || effectiveSubject,
+          type: 'EMAIL',
+          content: emailData.body || '',
+          briefData: emailData,
+          author: `AI (${emailData.model || model})`,
+          wordCount: emailData.body ? emailData.body.split(/\s+/).length : 100,
+          status: 'INTERNAL_REVIEW'
+        });
+      }
+    } catch (saveErr) {
+      console.warn('[ContentController] DB Save email notice:', saveErr.message);
     }
 
     res.json({ success: true, email: emailData });
@@ -368,6 +479,7 @@ exports.generateAdCopy = async (req, res) => {
       product,
       adPlatform = 'google',
       objective = 'conversions',
+      customPrompt = '',
       model = 'gemini',
     } = req.body;
 
@@ -378,6 +490,9 @@ exports.generateAdCopy = async (req, res) => {
     const prompt = `Write ${adPlatform} ad copy for: "${product}"
 Objective: ${objective}
 ${brandContext ? `Brand Context:\n${brandContext}` : ''}
+${customPrompt ? `Custom Directives:\n${customPrompt}\n` : ''}
+FORMATTING DIRECTIVE:
+- Write clean text without asterisks (**) or markdown formatting in headlines or descriptions unless specifically requested.
 
 Return JSON:
 {
@@ -393,50 +508,39 @@ Return JSON:
     if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
 
     const adData = result?.data || result;
+
+    const userWantsSymbolsAd = wantsSymbols(`${product} ${customPrompt}`);
+    if (!userWantsSymbolsAd && adData) {
+      ['longFormAd', 'shortAd'].forEach((key) => {
+        if (adData[key]) adData[key] = cleanMarkdownSymbols(adData[key]);
+      });
+      if (Array.isArray(adData.headlines)) {
+        adData.headlines = adData.headlines.map(cleanMarkdownSymbols);
+      }
+      if (Array.isArray(adData.descriptions)) {
+        adData.descriptions = adData.descriptions.map(cleanMarkdownSymbols);
+      }
+    }
+
+    // Persist generated ad copy to Content collection (Asset Library)
+    try {
+      if (adData) {
+        const adText = adData.longFormAd || (Array.isArray(adData.headlines) ? adData.headlines.join(' | ') : '') || '';
+        await Content.create({
+          workspaceId: workspaceId || 'ws_001',
+          title: `Ad: ${product} (${adPlatform})`,
+          type: 'AD',
+          content: adText,
+          briefData: adData,
+          author: `AI (${result?.model || model})`,
+          status: 'INTERNAL_REVIEW'
+        });
+      }
+    } catch (saveErr) {
+      console.warn('[ContentController] DB Save ad notice:', saveErr.message);
+    }
+
     res.json({ success: true, adPlatform, product, adCopy: adData });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// ─── POST /api/content/repurpose ──────────────────────────────────────────────
-exports.repurposeContent = async (req, res) => {
-  try {
-    const {
-      workspaceId,
-      sourceContent,
-      sourceType = 'blog',
-      targetFormats = ['instagram', 'linkedin', 'twitter'],
-      model = 'gemini',
-    } = req.body;
-
-    if (!sourceContent) return res.status(400).json({ success: false, error: 'sourceContent is required' });
-
-    const brandContext = await getBrandContext(workspaceId);
-
-    const prompt = `Transform this ${sourceType} content into multiple formats:
-
-Source Content:
-${sourceContent.substring(0, 2000)}
-
-Target Formats: ${targetFormats.join(', ')}
-${brandContext ? `Brand Context:\n${brandContext}` : ''}
-
-Return JSON with one key per format:
-{
-  "instagram": { "caption": "...", "hashtags": ["#tag"], "story": "story text" },
-  "linkedin": { "post": "professional LinkedIn post", "article_intro": "..." },
-  "twitter": { "tweet": "under 280 chars", "thread": ["tweet1", "tweet2"] },
-  "email": { "subject": "...", "body": "..." },
-  "youtube": { "title": "...", "description": "...", "tags": ["tag1"] }
-}
-
-Only include the requested formats in your response.`;
-
-    const result = await generateJSON(prompt, { model, temperature: 0.8 });
-    if (!result) return res.status(500).json({ success: false, error: 'Generation failed' });
-
-    res.json({ success: true, sourceType, targetFormats, repurposed: result });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

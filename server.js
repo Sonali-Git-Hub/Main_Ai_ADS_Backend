@@ -76,23 +76,23 @@ app.use((req, res, next) => {
       { key: 'total_api_hits' },
       { $inc: { value: 1 } },
       { upsert: true, setDefaultsOnInsert: true }
-    ).catch(() => {});
+    ).catch(() => { });
   }
 
-  // Log incoming request immediately
+  // Log incoming route hit immediately
   const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
   const payloadSummary = bodyKeys.length > 0 ? ` | Body: [${bodyKeys.join(', ')}]` : '';
-  console.log(`\x1b[36m⚡ [ACTION INCOMING] ${time} ${req.method} ${req.originalUrl}${payloadSummary}\x1b[0m`);
+  console.log(`\x1b[36m⚡ [ROUTE HIT] ${time} ${req.method} ${req.originalUrl}${payloadSummary}\x1b[0m`);
 
   res.on('finish', () => {
     const duration = Date.now() - start;
     const status = res.statusCode;
     if (status >= 500) {
-      console.error(`\x1b[31m❌ [SERVER ERROR ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.error(`\x1b[31m❌ [ROUTE ERROR ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     } else if (status >= 400) {
-      console.warn(`\x1b[33m⚠️ [SERVER WARN ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.warn(`\x1b[33m⚠️ [ROUTE WARN ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     } else {
-      console.log(`\x1b[32m✅ [ACTION DONE ${status}] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
+      console.log(`\x1b[32m✅ [ROUTE ${status} OK] ${time} ${req.method} ${req.originalUrl} (${duration}ms)\x1b[0m`);
     }
   });
   next();
@@ -203,7 +203,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Force SuperAdmin for the specific admin email
     if (userEmail === 'admin@aiads.com') {
       userRole = 'SuperAdmin';
-      
+
       // Optionally update it in DB so future queries see it
       if (user._id && user.role !== 'SuperAdmin') {
         user.role = 'SuperAdmin';
@@ -288,7 +288,7 @@ app.post('/api/auth/register', async (req, res) => {
         email: cleanEmail,
         userName: cleanEmail.split('@')[0]
       }).catch(err => console.warn('Welcome email error:', err.message));
-    } catch (e) {}
+    } catch (e) { }
 
     return res.json({
       success: true,
@@ -408,24 +408,7 @@ app.post('/api/feedback', async (req, res) => {
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'online',
-    service: 'AI Ads Enterprise Backend API v2.0',
-    timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    features: [
-      'workspace/brand-dna',
-      'brand-intelligence',
-      'campaigns',
-      'campaign-posts',
-      'ai-chat',
-      'content-generation',
-      'seo',
-      'creative-studio',
-      'calendar',
-      'approvals',
-    ],
-  });
+  res.json({ status: "ok" });
 });
 
 // ─── NEW FEATURE ROUTES ────────────────────────────────────────────────────────
@@ -463,7 +446,7 @@ app.get('/api/workspace/list', async (req, res) => {
   }
 
   const userEmail = (req.query.userEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
-  const filteredMemory = userEmail 
+  const filteredMemory = userEmail
     ? memoryWorkspaces.filter(w => (w.userEmail || '').toLowerCase() === userEmail)
     : memoryWorkspaces;
 
@@ -480,7 +463,7 @@ app.post('/api/workspace/scrape-preview', async (req, res) => {
       require('./services/telemetryService').recordTelemetryEvent({
         source: 'USER', eventType: 'USER_ACTION', component: 'BrandDnaScraper', action: 'SCRAPE_DOMAIN', page: '/brand-dna'
       });
-    } catch (e) {}
+    } catch (e) { }
 
     console.log(`🌐 [SCRAPER-PREVIEW] Generating non-persisted Brand DNA preview for: ${domainUrl}`);
     const brandDna = await generateBrandDNA(domainUrl, brandName || '');
@@ -730,7 +713,8 @@ const { generateJSON } = require('./services/aiService');
 
 app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
   const { id } = req.params;
-  
+  const { campaignId, campaignName, campaignGoal, targetAudience, platforms, budget, postingFrequency } = req.body || {};
+
   try {
     let workspace = null;
     let brandProfile = null;
@@ -739,12 +723,12 @@ app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
       workspace = await Workspace.findById(id);
       brandProfile = await BrandProfile.findOne({ workspaceId: id });
     }
-    
+
     // Fallback to memory store if Mongo not found or not using it
     if (!workspace) {
       workspace = memoryWorkspaces.find(w => w.id === id || w._id === id) || {};
     }
-    
+
     const brandName = workspace.brandName || brandProfile?.companyName || 'our brand';
     const industry = workspace.industryCategory || brandProfile?.structuredIdentity?.industry || 'General';
     const tagline = workspace.tagline || brandProfile?.structuredIdentity?.tagline || '';
@@ -756,12 +740,23 @@ app.post('/api/workspace/:id/generate-strategy', async (req, res) => {
     const competitors = (workspace.competitorLandscape && workspace.competitorLandscape.length > 0)
       ? workspace.competitorLandscape.join(', ')
       : 'Top industry competitors & alternatives';
-    const audienceStr = (workspace.targetAudience || []).join(', ') || brandProfile?.structuredIdentity?.target_audience || 'Target buyers & consumers';
+    const audienceStr = targetAudience || (workspace.targetAudience || []).join(', ') || brandProfile?.structuredIdentity?.target_audience || 'Target buyers & consumers';
 
-    console.log(`[Strategy Engine] Generating AI Marketing Roadmap for: ${brandName} (${industry})...`);
+    console.log(`[Strategy Engine] Generating AI Marketing Roadmap for: ${brandName} (${industry})${campaignName ? ` for Campaign: ${campaignName}` : ''}...`);
+
+    const campaignContext = campaignName ? `
+═══════════════════════════════════════════════════════
+TARGET CAMPAIGN OBJECTIVE (PRIMARY FOCUS):
+- Campaign Name: "${campaignName}"
+- Primary Goal: "${campaignGoal || 'Growth campaign'}"
+${platforms ? `- Platforms: ${Array.isArray(platforms) ? platforms.join(', ') : platforms}` : ''}
+${budget ? `- Budget: ₹${budget}` : ''}
+${postingFrequency ? `- Posting Frequency: ${postingFrequency}` : ''}
+NOTE: Tailor this entire strategy, business goal, lead magnet, funnel, and 30-day content plan directly to achieve this campaign objective!
+═══════════════════════════════════════════════════════` : '';
 
     const prompt = `You are a Chief Marketing Officer (CMO) and Growth Strategist.
-Generate a comprehensive, actionable, premium 30-day marketing strategy and roadmap for this brand:
+Generate a comprehensive, actionable, premium 30-day marketing strategy and roadmap for this brand:${campaignContext}
 
 ═══════════════════════════════════════════════════════
 BRAND DNA & COMPETITOR CONTEXT:
@@ -776,7 +771,7 @@ BRAND DNA & COMPETITOR CONTEXT:
 ═══════════════════════════════════════════════════════
 
 CRITICAL GENERATION RULES:
-1. Generate specific, authentic marketing assets tailored uniquely to "${brandName}" in "${industry}".
+1. Generate specific, authentic marketing assets tailored uniquely to "${brandName}" in "${industry}"${campaignName ? ` to execute campaign "${campaignName}"` : ''}.
 2. DO NOT use generic filler text like "The Authority Series", "Pillar 1", or "Key Insights for Brand".
 3. Provide realistic channel distribution percentages (e.g. for B2C food/fashion: heavy Instagram, YouTube, SEO; for B2B tech: heavy LinkedIn, SEO, Email).
 4. Generate an array "thirtyDayPlan" of 30 DISTINCT daily content items (Day 1 to 30) with varied creative formats, hooks, and specific topics.
@@ -842,8 +837,8 @@ Return ONLY valid JSON.`;
       const defaultTopics = (pillars && pillars.length > 0)
         ? pillars
         : (isFood
-            ? ['Premium Coffee & Beverages', 'Nutrition & Health Standards', 'Quick Recipes & Cooking Hacks', 'Sustainable Sourcing Proof']
-            : ['AI Automation & Velocity', 'Enterprise Data Governance', 'Content Operations Playbook', 'Customer ROI Case Studies']);
+          ? ['Premium Coffee & Beverages', 'Nutrition & Health Standards', 'Quick Recipes & Cooking Hacks', 'Sustainable Sourcing Proof']
+          : ['AI Automation & Velocity', 'Enterprise Data Governance', 'Content Operations Playbook', 'Customer ROI Case Studies']);
 
       const defaultPlatforms = isFood
         ? ['Instagram & Reels Copy', 'SEO Blogs (Long-Form)', 'YouTube Shorts', 'Email Newsletters']
@@ -855,7 +850,7 @@ Return ONLY valid JSON.`;
         const platform = defaultPlatforms[i % defaultPlatforms.length];
         const week = Math.ceil(day / 7);
         const stage = week === 1 ? 'Awareness' : week === 2 ? 'Consideration' : week === 3 ? 'Engagement' : 'Conversion';
-        
+
         return {
           day,
           platform,
@@ -914,6 +909,42 @@ Return ONLY valid JSON.`;
       });
     }
 
+    if (campaignName) {
+      strategy.campaignName = campaignName;
+      strategy.campaignGoal = campaignGoal || '';
+    }
+    if (campaignId) {
+      strategy.campaignId = campaignId;
+      try {
+        const Campaign = require('./models/Campaign');
+        const CampaignPost = require('./models/CampaignPost');
+        if (mongoose.Types.ObjectId.isValid(campaignId)) {
+          const existingPosts = await CampaignPost.find({ campaignId }).sort({ date: 1, createdAt: 1 });
+          if (existingPosts && existingPosts.length > 0 && Array.isArray(strategy.thirtyDayPlan)) {
+            strategy.thirtyDayPlan = strategy.thirtyDayPlan.map((d, idx) => {
+              const match = existingPosts[idx];
+              if (match) {
+                const topic = match.postObjective || match.topic || match.postFor || d.topic;
+                return {
+                  ...d,
+                  day: idx + 1,
+                  title: topic,
+                  topic: topic,
+                  platform: match.platform || d.platform,
+                  pillar: match.postFor || match.contentType || d.pillar,
+                  actionItem: d.actionItem || match.prompt || match.captionPrompt,
+                };
+              }
+              return d;
+            });
+          }
+          await Campaign.findByIdAndUpdate(campaignId, { aiGeneratedStrategy: strategy });
+        }
+      } catch (campErr) {
+        console.log('Campaign strategy update note:', campErr.message);
+      }
+    }
+
     try {
       if (mongoose.Types.ObjectId.isValid(id)) {
         await Workspace.findByIdAndUpdate(id, { currentStrategy: strategy }, { new: true });
@@ -921,7 +952,7 @@ Return ONLY valid JSON.`;
     } catch (e) {
       console.log('MongoDB Update Note for strategy:', e.message);
     }
-    
+
     const index = memoryWorkspaces.findIndex(w => w.id === id || w._id === id);
     if (index !== -1) {
       memoryWorkspaces[index].currentStrategy = strategy;
@@ -967,7 +998,7 @@ app.delete('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await Workspace.findByIdAndDelete(id);
-  } catch (e) {}
+  } catch (e) { }
   memoryWorkspaces = memoryWorkspaces.filter((w) => w.id !== id && w._id?.toString() !== id);
   res.json({ success: true, message: 'Workspace deleted successfully' });
 });
@@ -1112,7 +1143,7 @@ app.get('/api/creative/credits', (req, res) => {
 
 function generateCategoryAwareVertexAIVisual(prompt = '', style = 'Glassmorphic Modern 3D', brandName = "Haldiram's") {
   const pLower = prompt.toLowerCase();
-  
+
   let category = 'LUXURY_HAMPER';
   if (pLower.includes('carousel') || pLower.includes('customization') || pLower.includes('bespoke') || pLower.includes('option') || pLower.includes('slide')) {
     category = 'CAROUSEL_CUSTOMIZATION';
@@ -1139,7 +1170,7 @@ function generateCategoryAwareVertexAIVisual(prompt = '', style = 'Glassmorphic 
     bgGradient = '<radialGradient id="bg" cx="50%" cy="40%" r="80%"><stop offset="0%" stop-color="#1E1B4B"/><stop offset="60%" stop-color="#0F172A"/><stop offset="100%" stop-color="#020617"/></radialGradient>';
     accentGrad = '<linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#818CF8"/><stop offset="50%" stop-color="#C084FC"/><stop offset="100%" stop-color="#38BDF8"/></linearGradient>';
     categoryBadge = 'CAROUSEL & BESPOKE CUSTOMIZATION';
-    
+
     centerPieceSvg = `
       <g filter="url(#shadow)" transform="translate(0, -10)">
         <rect x="580" y="270" width="300" height="380" rx="20" fill="rgba(30, 41, 59, 0.6)" stroke="#818CF8" stroke-width="2" opacity="0.6"/>
@@ -1366,6 +1397,8 @@ app.post('/api/creative/visual/generate', async (req, res) => {
     const { generateBrandAdImage } = require('./services/brandImageAgent.service');
     const visualRes = await generateBrandAdImage({
       workspaceId,
+      prompt,
+      customPrompt: prompt,
       brandName: brandName || brand || 'Brand',
       brandColors,
       industry,
@@ -1405,7 +1438,7 @@ app.get('/api/calendar/entries', async (req, res) => {
   try {
     const dbEntries = await Calendar.find().sort({ createdAt: -1 });
     if (dbEntries && dbEntries.length > 0) return res.json({ success: true, entries: dbEntries });
-  } catch (e) {}
+  } catch (e) { }
   res.json({ success: true, entries: memoryCalendar });
 });
 
@@ -1425,7 +1458,7 @@ app.get('/api/approvals/queue', async (req, res) => {
   try {
     const dbQueue = await Content.find().sort({ createdAt: -1 });
     if (dbQueue && dbQueue.length > 0) return res.json({ success: true, queue: dbQueue });
-  } catch (e) {}
+  } catch (e) { }
   res.json({ success: true, queue: memoryContentStore });
 });
 
@@ -1485,11 +1518,22 @@ app.post('/api/approvals/status', handleApprovalStatusUpdate);
 // ─── ANALYTICS ────────────────────────────────────────────────────────────────
 app.get('/api/analytics/summary', async (req, res) => {
   try {
-    const { workspaceId, brandName } = req.query;
+    const { workspaceId, brandName, userEmail: queryEmail } = req.query;
+
+    let userEmail = (queryEmail || req.headers['x-user-email'] || '').toLowerCase().trim();
 
     let targetIds = [];
     if (workspaceId) {
       targetIds.push(workspaceId.toString());
+    }
+
+    if (!userEmail && workspaceId) {
+      try {
+        const currentWs = await Workspace.findById(workspaceId).select('userEmail').lean();
+        if (currentWs && currentWs.userEmail) {
+          userEmail = currentWs.userEmail.toLowerCase().trim();
+        }
+      } catch (e) { }
     }
 
     let brandRegex = null;
@@ -1502,7 +1546,7 @@ app.get('/api/analytics/summary', async (req, res) => {
         matchingWorkspaces.forEach(w => {
           if (w._id) targetIds.push(w._id.toString());
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     targetIds = [...new Set(targetIds)];
@@ -1517,30 +1561,38 @@ app.get('/api/analytics/summary', async (req, res) => {
         orConditions.push({ brandName: brandRegex });
         orConditions.push({ brand: brandRegex });
         orConditions.push({ 'metadata.brand': brandRegex });
+        if (brandName && brandName.trim()) {
+          orConditions.push({ campaignName: new RegExp(brandName.trim(), 'i') });
+        }
       }
       filter = orConditions.length > 1 ? { $or: orConditions } : orConditions[0];
     }
 
-    // Count strictly for the active brand/workspace
+    // Count strictly for the active user & brand/workspace
     const [
+      userBrandsCount,
       totalCampaigns, activeCampaigns, completedCampaigns,
       cpTotal, cpApproved, cpGenerated,
       gpTotal, gpApproved,
       contentTotal, contentApproved,
       blogCount, socialContentCount, emailCount, newspaperCount, adCount
     ] = await Promise.all([
+      // Total Brands owned by this specific user
+      userEmail
+        ? Workspace.countDocuments({ userEmail })
+        : Promise.resolve(targetIds.length > 0 ? targetIds.length : 1),
       // Campaign counts
       Campaign.countDocuments(filter),
       Campaign.countDocuments({ ...filter, status: { $in: ['Active', 'ACTIVE', 'running'] } }),
       Campaign.countDocuments({ ...filter, status: { $in: ['Completed', 'COMPLETED', 'finished'] } }),
-      // CampaignPost counts (posts inside campaigns)
+      // CampaignPost counts (calendar schedule slots)
       CampaignPost.countDocuments(filter),
       CampaignPost.countDocuments({ ...filter, approvalStatus: 'Approved' }),
       CampaignPost.countDocuments({ ...filter, status: 'Generated' }),
-      // GeneratedPost counts (quick posts, studio posts)
+      // GeneratedPost counts (quick posts, studio posts saved in DB)
       GeneratedPost.countDocuments(filter),
       GeneratedPost.countDocuments({ ...filter, status: 'approved' }),
-      // Content counts (blog, social, email, press from editorial studio)
+      // Content counts (actual generated assets saved in Asset Library / DB)
       Content.countDocuments(filter),
       Content.countDocuments({ ...filter, status: 'APPROVED' }),
       // Individual format breakdown
@@ -1551,29 +1603,36 @@ app.get('/api/analytics/summary', async (req, res) => {
       Content.countDocuments({ ...filter, type: { $in: ['AD', 'ad_copy'] } }),
     ]);
 
-    // Aggregate totals across all collections for this brand
-    const totalGenerated = cpTotal + gpTotal + contentTotal;
+    // Real generated content saved in Asset Library & DB (Content collection + GeneratedPost)
+    // NOTE: Does NOT count cpTotal (calendar planned entries) as requested
+    const actualSavedContent = contentTotal + gpTotal;
     const totalApproved = cpApproved + gpApproved + contentApproved;
-    const generatedStatusCount = cpGenerated + gpTotal;
 
     const totalBlogs = blogCount;
-    const totalSocial = gpTotal + cpTotal + socialContentCount;
+    const totalSocial = gpTotal + socialContentCount;
     const totalEmails = emailCount;
     const totalNewspapers = newspaperCount;
     const totalAds = adCount;
 
+    const totalBrands = (userBrandsCount && userBrandsCount > 0) ? userBrandsCount : 1;
+
     res.json({
       success: true,
       analytics: {
-        campaigns: { 
-          total: totalCampaigns, 
+        brands: {
+          total: totalBrands,
+          active: totalBrands > 0 ? 1 : 0
+        },
+        campaigns: {
+          total: totalCampaigns,
           active: activeCampaigns,
           completed: completedCampaigns || Math.max(0, totalCampaigns - activeCampaigns)
         },
         posts: {
-          total: totalGenerated,
+          total: actualSavedContent, // Actual generated content saved in Asset Library & DB
+          savedAssets: actualSavedContent,
           approved: totalApproved,
-          generated: generatedStatusCount,
+          generated: actualSavedContent,
           campaignPosts: cpTotal,
           generatedPosts: gpTotal,
           contentPosts: contentTotal,
@@ -1584,9 +1643,9 @@ app.get('/api/analytics/summary', async (req, res) => {
           emails: totalEmails,
           newspapers: totalNewspapers,
           ads: totalAds,
-          totalAssets: totalGenerated,
+          totalAssets: actualSavedContent,
         },
-        approvalRate: totalGenerated > 0 ? Math.round((totalApproved / totalGenerated) * 100) : 0,
+        approvalRate: actualSavedContent > 0 ? Math.round((totalApproved / actualSavedContent) * 100) : 0,
       },
     });
   } catch (err) {

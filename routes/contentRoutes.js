@@ -17,9 +17,6 @@ router.post('/email/generate', contentController.generateEmailCopy);
 // Ad copy
 router.post('/ad-copy/generate', contentController.generateAdCopy);
 
-// Repurpose
-router.post('/repurpose', contentController.repurposeContent);
-
 // Fact check
 router.post('/fact-check', contentController.factCheckContent);
 

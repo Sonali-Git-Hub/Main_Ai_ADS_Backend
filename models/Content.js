@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const ContentSchema = new mongoose.Schema({
   workspaceId: { type: String, default: 'ws_001' },
   title: { type: String, required: true },
-  type: { type: String, enum: ['BLOG', 'SOCIAL', 'REPURPOSE', 'SEO_BRIEF'], default: 'BLOG' },
+  type: { type: String, default: 'BLOG' },
   content: { type: String, default: '' },
   wordCount: { type: Number, default: 0 },
   author: { type: String, default: 'Gemini 3.5 Editorial Engine' },
