@@ -18,9 +18,6 @@ const getOpenAIClient = () => {
   return openaiClient;
 };
 
-// ─── Groq Setup ───────────────────────────────────────────────────────────────
-const GROQ_BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
-
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 const buildSystemPrompt = (options = {}) => {
   let system = `You are AI Ads™ Assistant, the official AI copilot embedded inside the AI Ads™ Platform.
@@ -387,20 +384,26 @@ const chat = async (messages, options = {}) => {
   const modelChoice = (options.model || 'gemini').toLowerCase();
 
   const geminiAvailable = !!aiClient;
+
+  // Print generated prompt to terminal
+  const lastUserMsg = messages && messages.length > 0 ? (messages[messages.length - 1].content || '') : '';
+  console.log('\n==================================================');
+  console.log(`🤖 [GENERATED AI TEXT PROMPT] (${options.model || 'gemini'})`);
+  console.log('==================================================');
+  console.log(lastUserMsg.trim() || JSON.stringify(messages, null, 2));
+  console.log('==================================================\n');
+
   console.log(`${reqTag}AI Request initiated. Target provider: ${modelChoice}, Gemini Available: ${geminiAvailable}`);
 
   try {
     if (modelChoice === 'gpt-4o' || modelChoice === 'openai') {
       console.log(`${reqTag}Selected AI provider: OpenAI (Model: gpt-4o)`);
       return await chatWithOpenAI(messages, options);
-    } else if (modelChoice === 'groq' || modelChoice === 'llama') {
-      console.log(`${reqTag}Selected AI provider: Groq (Model: llama-3)`);
-      return await chatWithGroq(messages, options);
     } else if (!geminiAvailable) {
       console.log(`${reqTag}Gemini/Vertex not configured. Attempting OpenAI GPT-4o...`);
       return await chatWithOpenAI(messages, options);
     } else {
-      console.log(`${reqTag}Selected AI provider: Gemini / Vertex AI (Model: gemini-3.5-flash)`);
+      console.log(`${reqTag}Selected AI provider: Gemini / Vertex AI`);
       return await chatWithGemini(messages, options);
     }
   } catch (primaryError) {
@@ -411,15 +414,8 @@ const chat = async (messages, options = {}) => {
       return await chatWithOpenAI(messages, options);
     } catch (fallbackError) {
       const safeFbError = fallbackError.message ? fallbackError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
-      console.warn(`${reqTag}OpenAI fallback failed (${safeFbError}). Attempting Groq fallback...`);
-      try {
-        console.log(`${reqTag}Groq fallback started...`);
-        return await chatWithGroq(messages, options);
-      } catch (groqError) {
-        const safeGroqError = groqError.message ? groqError.message.replace(/(key|token|auth)=[^&\s]+/gi, '$1=***') : 'Unknown error';
-        console.warn(`${reqTag}All external AI APIs failed (${safeGroqError}). Activating AI Ads™ Smart Fallback Engine...`);
-        return generateSmartFallbackResponse(messages, options);
-      }
+      console.warn(`${reqTag}All external AI APIs failed (${safeFbError}). Activating AI Ads™ Smart Fallback Engine...`);
+      return generateSmartFallbackResponse(messages, options);
     }
   }
 };
@@ -507,4 +503,4 @@ const generateCaptions = async (prompt, options = {}) => {
   };
 };
 
-module.exports = { chat, generate, generateJSON, generateCaptions, chatWithGemini, chatWithOpenAI, chatWithGroq };
+module.exports = { chat, generate, generateJSON, generateCaptions, chatWithGemini, chatWithOpenAI };

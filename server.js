@@ -773,8 +773,9 @@ BRAND DNA & COMPETITOR CONTEXT:
 CRITICAL GENERATION RULES:
 1. Generate specific, authentic marketing assets tailored uniquely to "${brandName}" in "${industry}"${campaignName ? ` to execute campaign "${campaignName}"` : ''}.
 2. DO NOT use generic filler text like "The Authority Series", "Pillar 1", or "Key Insights for Brand".
-3. Provide realistic channel distribution percentages (e.g. for B2C food/fashion: heavy Instagram, YouTube, SEO; for B2B tech: heavy LinkedIn, SEO, Email).
+3. Provide realistic channel distribution percentages (e.g. for B2C food/fashion: heavy Instagram, SEO, Email; for B2B tech: heavy LinkedIn, SEO, Email).
 4. Generate an array "thirtyDayPlan" of 30 DISTINCT daily content items (Day 1 to 30) with varied creative formats, hooks, and specific topics.
+5. NO VIDEO OR REEL GENERATION: We do NOT provide video or reel generation capabilities. DO NOT generate strategy content, titles, or directives for Reels, YouTube Shorts, TikTok, or video production. Exclude video and reels. Generate ONLY content for static image posts, carousels, text posts, SEO blogs, LinkedIn articles/posts, and email newsletters.
 
 Return a JSON object with this exact structure:
 {
@@ -809,10 +810,10 @@ Return a JSON object with this exact structure:
   "thirtyDayPlan": [
     {
       "day": 1,
-      "platform": "Instagram / LinkedIn / SEO Blog / Email / YouTube",
-      "topic": "Catchy daily content title",
+      "platform": "Instagram / LinkedIn / SEO Blog / Email Newsletter / Twitter",
+      "topic": "Catchy daily content title (Static Post/Carousel/Blog)",
       "pillar": "Related content pillar",
-      "actionItem": "Specific creative guideline, hook angle, or call to action for the content creator"
+      "actionItem": "Specific creative image guideline, carousel hook, or text copy prompt for content creator"
     }
   ]
 }
@@ -841,8 +842,8 @@ Return ONLY valid JSON.`;
           : ['AI Automation & Velocity', 'Enterprise Data Governance', 'Content Operations Playbook', 'Customer ROI Case Studies']);
 
       const defaultPlatforms = isFood
-        ? ['Instagram & Reels Copy', 'SEO Blogs (Long-Form)', 'YouTube Shorts', 'Email Newsletters']
-        : ['LinkedIn & Founder Copy', 'SEO Blogs (Long-Form)', 'Email Newsletters', 'Twitter/X & Short-Form'];
+        ? ['Instagram Image & Carousel', 'SEO Blogs (Long-Form)', 'LinkedIn Post', 'Email Newsletters']
+        : ['LinkedIn & Founder Copy', 'SEO Blogs (Long-Form)', 'Email Newsletters', 'Twitter/X Post'];
 
       const fallbackPlan = Array.from({ length: 30 }, (_, i) => {
         const day = i + 1;
@@ -869,15 +870,15 @@ Return ONLY valid JSON.`;
         bestPlatforms: defaultPlatforms.map(p => p.split('(')[0].trim()),
         contentPillars: defaultTopics,
         channelMix: isFood ? [
-          { label: 'Instagram & Reels Copy', pct: 35, icon: 'Instagram', color: 'bg-rose-500' },
+          { label: 'Instagram Image & Carousel', pct: 35, icon: 'Instagram', color: 'bg-rose-500' },
           { label: 'SEO Blogs (Long-Form)', pct: 30, icon: 'Globe', color: 'bg-brand-500' },
-          { label: 'YouTube Shorts & Video', pct: 20, icon: 'Globe', color: 'bg-red-500' },
+          { label: 'LinkedIn Article & Post', pct: 20, icon: 'Linkedin', color: 'bg-blue-500' },
           { label: 'Email Newsletters', pct: 15, icon: 'Mail', color: 'bg-amber-500' }
         ] : [
           { label: 'LinkedIn & Founder Copy', pct: 40, icon: 'Linkedin', color: 'bg-blue-500' },
           { label: 'SEO Blogs (Long-Form)', pct: 30, icon: 'Globe', color: 'bg-brand-500' },
           { label: 'Email Newsletters', pct: 20, icon: 'Mail', color: 'bg-amber-500' },
-          { label: 'Instagram & Short-Form', pct: 10, icon: 'Instagram', color: 'bg-rose-500' }
+          { label: 'Instagram Post & Carousel', pct: 10, icon: 'Instagram', color: 'bg-rose-500' }
         ],
         audience: [
           `Primary Household Buyers & Category Consumers searching for reliable quality in ${industry}`,
@@ -885,7 +886,7 @@ Return ONLY valid JSON.`;
           `Commercial & Bulk Order Decision-Makers seeking wholesale and subscription convenience`
         ],
         funnel: {
-          awareness: `Top-of-funnel educational videos and SEO recipe/trend guides to capture broad search demand for ${brandName}.`,
+          awareness: `Top-of-funnel educational visual carousels and SEO recipe/trend guides to capture broad search demand for ${brandName}.`,
           nurturing: `Middle-of-funnel customer reviews, comparison proof, and downloadable guide to nurture high-intent prospects.`,
           conversion: `Bottom-of-funnel limited-time offers, direct-to-consumer checkout incentives, and subscription bundles.`
         },
@@ -964,6 +965,78 @@ Return ONLY valid JSON.`;
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ─── POST /api/workspace/:id/regenerate-strategy-card ─────────────────────────
+app.post('/api/workspace/:id/regenerate-strategy-card', async (req, res) => {
+  const { id } = req.params;
+  const { day, currentTopic, currentActionItem, platform, pillar, userDirective } = req.body || {};
+
+  try {
+    let workspace = null;
+    let brandProfile = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      workspace = await Workspace.findById(id);
+      brandProfile = await BrandProfile.findOne({ workspaceId: id });
+    }
+    if (!workspace) {
+      workspace = memoryWorkspaces.find(w => w.id === id || w._id === id) || {};
+    }
+
+    const brandName = workspace.brandName || brandProfile?.companyName || 'our brand';
+    const industry = workspace.industryCategory || brandProfile?.structuredIdentity?.industry || 'General';
+
+    console.log(`[Strategy Card Engine] Regenerating card for Day ${day || 1} (${brandName}) with directive: "${userDirective || 'None'}"...`);
+
+    const prompt = `You are a Chief Marketing Officer and Strategy Specialist for ${brandName} (${industry}).
+Regenerate a single marketing calendar content card for Day ${day || 1} on platform "${platform || 'Social Media'}".
+
+CRITICAL RULE: DO NOT generate video or reel content/directives (we do NOT support video/reel generation). Exclude Reels, YouTube Shorts, and video creation prompts. Focus exclusively on static images, carousels, text posts, SEO blog articles, and email newsletters.
+
+Current Card Context:
+- Topic: "${currentTopic || ''}"
+- Action Item: "${currentActionItem || ''}"
+- Platform: "${platform || 'Instagram'}"
+- Content Pillar: "${pillar || 'Brand Strategy'}"
+
+${userDirective ? `CRITICAL USER DIRECTIVE / STRATEGY INPUT: "${userDirective}". Make sure the regenerated topic and actionItem explicitly incorporate this directive without requesting video generation.` : 'Generate a fresh, high-performing alternative strategy topic and action item.'}
+
+Return ONLY a valid JSON object matching this schema exactly:
+{
+  "topic": "Catchy, clear content title incorporating the strategy input (Static Image/Carousel/Blog format)",
+  "actionItem": "Detailed creative image guideline, carousel visual hook, or copy prompt for content creator",
+  "pillar": "Relevant content pillar"
+}`;
+
+    let updatedCard = null;
+    try {
+      const aiRes = await generateJSON(prompt, { reqId: `REGEN-CARD-${day}` });
+      updatedCard = aiRes?.data || (aiRes && typeof aiRes === 'object' && !aiRes.data ? aiRes : null);
+    } catch (aiErr) {
+      console.warn('[Strategy Card Engine] AI generation fallback:', aiErr.message);
+    }
+
+    if (!updatedCard || !updatedCard.topic) {
+      const topicStr = userDirective
+        ? (userDirective.length > 60 ? userDirective.slice(0, 60) + '...' : userDirective)
+        : `Refreshed Strategy: ${currentTopic || 'Brand Post'}`;
+      const actionStr = userDirective
+        ? `Create content focusing on: ${userDirective}`
+        : `Publish ${platform || 'social'} post with visual focus on ${brandName} value.`;
+      updatedCard = {
+        topic: topicStr,
+        actionItem: actionStr,
+        pillar: pillar || 'Brand Strategy'
+      };
+    }
+
+    return res.json({ success: true, updatedCard });
+  } catch (err) {
+    console.error(`[Regen Strategy Card Error]:`, err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.put('/api/workspace/:id', async (req, res) => {
   const { id } = req.params;
   try {

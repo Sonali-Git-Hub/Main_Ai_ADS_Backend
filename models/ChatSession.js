@@ -55,7 +55,7 @@ const chatSessionSchema = new mongoose.Schema(
     detectedMode: { type: String, default: 'NORMAL_CHAT' },
     isShared: { type: Boolean, default: false },
     shareId: { type: String, unique: true, sparse: true, index: true },
-    model: { type: String, default: 'gemini' }, // 'gemini' | 'gpt-4o' | 'groq'
+    model: { type: String, default: 'gemini' }, // 'gemini' | 'gpt-4o'
   },
   { timestamps: true }
 );

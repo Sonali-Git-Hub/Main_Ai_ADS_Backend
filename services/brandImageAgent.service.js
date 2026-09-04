@@ -53,6 +53,19 @@ function craftBrandAdPrompt({
   let sceneDetails = '';
   const textContext = `${cleanBrand} ${industry} ${companyDescription} ${topic}`.toLowerCase();
 
+  // Strategy Sub-Topic Intent Detection (Evaluated ONLY on topic & action prompt, not company description)
+  const topicText = `${topic} ${companyDescription && companyDescription.length < 50 ? companyDescription : ''}`.toLowerCase();
+
+  const isOfferSale = /offer|discount|deal|countdown|sale|special|coupon|promo|limited|exclusive/i.test(topicText);
+  const isFamilyPhoto = /family photo|vintage family|family picture|family portrait|ancestor|grandma|grandfather|family member|origin story/i.test(topicText);
+  const isBehindTheScenes = /behind the scenes|maker|craft|kitchen|bottling|factory|team|production|making|handcrafted|floor|unboxing/i.test(topicText);
+  const isIngredientFarm = /ingredient|farm|harvest|chili|datil|fresh tomatoes|field|grow|farmer/i.test(topicText);
+  const isRecipeDish = /recipe|dish|plate|meal|wing|burger|pairing|cooking|culinary|brunch|chef/i.test(topicText);
+  const isProductBottle = /bottle|packaging|product|shelf|label|display|introduction/i.test(topicText);
+  const isHeritageOrigin = /heritage|origin|history|throwback|family recipe|30-year|traditional/i.test(textContext);
+  const isTestimonialChallenge = /testimonial|customer|challenge|fan|community|patio|friends|lifestyle|review|appreciation/i.test(topicText);
+  const isFoodTourLocal = /food tour|st\. augustine|exploring|local spots|community|partnership|local love/i.test(topicText);
+
   if (textContext.includes('nvidia') || textContext.includes('gpu') || textContext.includes('ai computing') || textContext.includes('semiconductor') || textContext.includes('neural')) {
     sceneDetails = `Futuristic high-performance AI computing facility, glowing green neon circuitry accents matching NVIDIA palette (#76B900), ultra-detailed next-generation AI chip processor die with intricate optical reflections, sleek server rack infrastructure in background, ray-traced depth of field, high-tech enterprise innovation visual`;
   } else if (textContext.includes('bus') || textContext.includes('redbus') || textContext.includes('travel') || textContext.includes('transit') || textContext.includes('booking')) {
@@ -61,8 +74,32 @@ function craftBrandAdPrompt({
     sceneDetails = `Artisan stationery flat-lay on polished oak wood desk, premium sharp graphite pencils with rich red and black finish, crisp notebook paper with creative sketches, soft natural window morning lighting, Hasselblad studio photography`;
   } else if (textContext.includes('saas') || textContext.includes('software') || textContext.includes('analytics') || textContext.includes('app') || textContext.includes('cloud')) {
     sceneDetails = `Clean modern glass tech headquarters, high-resolution futuristic holographic data visualization showing growth metrics and seamless cloud connectivity, professional creative lighting, minimalist executive aesthetic`;
-  } else if (textContext.includes('food') || textContext.includes('dining') || textContext.includes('restaurant') || textContext.includes('sweet')) {
-    sceneDetails = `Artisan gourmet culinary plate presentation with fresh garnishes, rich steam rising, warm atmospheric ambient bistro lighting, mouth-watering macro food photography`;
+  } else if (textContext.includes('food') || textContext.includes('dining') || textContext.includes('restaurant') || textContext.includes('sweet') || textContext.includes('sauce') || textContext.includes('pepper')) {
+    if (isOfferSale) {
+      sceneDetails = `Sleek high-impact promotional advertising banner for ${cleanBrand}, luxury gift box with ribbon and promotional countdown timer display, vibrant brand colors (${colorsList}), polished studio commercial lighting`;
+    } else if (isFamilyPhoto) {
+      sceneDetails = `Authentic vintage family portrait for ${cleanBrand}, warm sepia-toned film photography of family founders sharing traditional family recipe in classic kitchen, emotional heritage storytelling, 35mm film camera commercial visual`;
+    } else if (isBehindTheScenes) {
+      sceneDetails = `Authentic behind-the-scenes craft kitchen production for ${cleanBrand}, small-batch artisanal team carefully hand-bottling hot sauce in stainless steel commercial kitchen, glass bottles with custom labels, authentic craftsmanship commercial photography`;
+    } else if (isIngredientFarm) {
+      sceneDetails = `Vibrant close-up macro photography of fresh ripe Datil peppers harvested on a Florida farm, bright orange and red peppers on rustic wooden surface with morning dew drops, farm-to-table natural lighting`;
+    } else if (isProductBottle) {
+      sceneDetails = `Sleek glass bottle of ${cleanBrand} hot sauce prominently displayed on a rustic oak tabletop, surrounded by fresh Datil peppers and whole spices, hero commercial product advertising shot`;
+    } else if (isFoodTourLocal) {
+      sceneDetails = `Sunlit historic street scene in St. Augustine Florida, outdoor cafe dining patio featuring ${cleanBrand} hot sauce bottle on wooden table, warm travel lifestyle photography`;
+    } else if (isRecipeDish) {
+      sceneDetails = `Mouth-watering gourmet brunch presentation of eggs benedict drizzled with spicy ${cleanBrand} hot sauce, rich aroma steam, warm bistro lighting, macro food photography`;
+    } else if (isHeritageOrigin) {
+      sceneDetails = `Nostalgic vintage recipe journal with handwritten 30-year family hot sauce recipe, surrounded by vintage glass spice jars, warm morning sunbeams, heritage editorial photography`;
+    } else if (isTestimonialChallenge) {
+      sceneDetails = `High-energy outdoor patio dining scene with friends laughing and enjoying grilled BBQ food drizzled with ${cleanBrand} hot sauce, golden hour natural light, vibrant social ad visual`;
+    } else {
+      sceneDetails = `Mouth-watering gourmet culinary presentation of grilled wings and roasted vegetables drizzled with vibrant ${cleanBrand} hot sauce, rich aroma steam, warm bistro lighting, macro food photography`;
+    }
+  } else if (isOfferSale) {
+    sceneDetails = `High-impact commercial promotional offer display for ${cleanBrand}, sleek discount announcement banner, vibrant brand colors (${colorsList}), studio advertising photography`;
+  } else if (isFamilyPhoto) {
+    sceneDetails = `Nostalgic authentic family photo portrait for ${cleanBrand}, warm film tones, heartfelt emotional connection, commercial editorial photography`;
   } else {
     sceneDetails = `Commercial advertising studio setup for ${cleanBrand}, highlighting ${topic}, modern architectural interior, brand colors (${colorsList}) subtle ambient lighting, pristine focus, premium commercial ad aesthetic`;
   }
@@ -277,16 +314,23 @@ async function generateBrandAdImage({
   const targetAspect = aspect || ((platLower.includes('reel') || platLower.includes('tiktok') || platLower.includes('story')) ? '9:16' : platLower === 'instagram' ? '1:1' : '16:9');
 
   let imageUrl = '';
-  let engineUsed = 'gemini-3.1-image';
+  let engineUsed = 'gemini-3.1-flash-image';
 
-  // Tier 1: Try Vertex AI / @google/genai with gemini-3.1-image model
+  // Tier 1: Try Vertex AI / @google/genai with gemini-3.1-flash-image model
   let gcsPath = null;
   const client = globalAiClient || aiClient;
   if (client && typeof client.models?.generateContent === 'function') {
-    const candidateModels = ['gemini-3.1-image', 'gemini-3.1-flash-image', 'imagen-3.0-generate-002'];
+    const candidateModels = ['gemini-3.1-flash-image', 'imagen-3.0-generate-002'];
     for (const modelName of candidateModels) {
       if (imageUrl) break;
       try {
+        console.log('\n==================================================');
+        console.log(`🎨 [GENERATED VISUAL IMAGE PROMPT] (${modelName})`);
+        console.log('==================================================');
+        console.log(`Brand: "${resolvedBrandName}" | Aspect: ${targetAspect}`);
+        console.log(`Prompt: "${imagePrompt}"`);
+        console.log('==================================================\n');
+
         console.log(`[BrandImageAgent] Invoking @google/genai model "${modelName}" for "${resolvedBrandName}"...`);
         const vertexRes = await client.models.generateContent({
           model: modelName,
@@ -341,7 +385,7 @@ async function generateBrandAdImage({
       aspect: targetAspect,
       variationIndex: generatedSeed % 10
     });
-    engineUsed = 'gemini-3.1-image (Brand Studio Visual)';
+    engineUsed = 'gemini-3.1-flash-image (Brand Studio Visual)';
   }
 
   return {

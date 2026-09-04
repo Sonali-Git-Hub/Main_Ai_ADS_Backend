@@ -53,7 +53,7 @@ const getBrandContext = async (workspaceId, directBrandName = '') => {
   return context;
 };
 
-// ─── Helper: Clean markdown formatting & symbols unless user requested them ──
+// ─── Helper: Clean markdown formatting & symbols ─────────────────────────────
 const cleanMarkdownSymbols = (text) => {
   if (!text || typeof text !== 'string') return text;
   return text
@@ -61,21 +61,16 @@ const cleanMarkdownSymbols = (text) => {
     .replace(/\\t/g, '\t')
     .replace(/\\"/g, '"')
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
+    .replace(/#{1,6}/g, '')
+    .replace(/\*{1,3}/g, '')
+    .replace(/_{1,3}/g, '')
+    .replace(/`{1,3}/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^[\s*_-]{3,}\s*$/gm, '')
     .replace(/^\*\s+/gm, '• ')
     .replace(/^-\s+/gm, '• ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-};
-
-const wantsSymbols = (text) => {
-  if (!text || typeof text !== 'string') return false;
-  return /[*#_`]/.test(text);
 };
 
 // ─── POST /api/content/social/generate ───────────────────────────────────────
@@ -150,9 +145,7 @@ Return a JSON object with this exact structure:
 
     if (!postData) return res.status(500).json({ success: false, error: 'Generation failed' });
 
-    // Clean any unwanted asterisks/markdown symbols unless user explicitly requested symbols
-    const userWantsSymbolsSocial = wantsSymbols(`${topic || ''} ${customPrompt || ''} ${userProvidedPrompt || ''}`);
-    if (!userWantsSymbolsSocial && postData) {
+    if (postData) {
       ['hook', 'shortCaption', 'caption', 'longCaption', 'cta'].forEach((k) => {
         if (postData[k]) postData[k] = cleanMarkdownSymbols(postData[k]);
       });
@@ -434,12 +427,7 @@ Return JSON:
       };
     }
 
-    // Clean any unwanted asterisks/markdown symbols unless user explicitly requested symbols
-    const userRequestedSymbols = wantsSymbols(
-      `${effectiveSubject} ${context} ${keyPoints} ${customPrompt}`
-    );
-
-    if (!userRequestedSymbols && emailData) {
+    if (emailData) {
       ['body', 'subject', 'preheader', 'headline', 'cta', 'openRateTip', 'closingLine', 'ps'].forEach((key) => {
         if (emailData[key]) {
           emailData[key] = cleanMarkdownSymbols(emailData[key]);
@@ -509,8 +497,7 @@ Return JSON:
 
     const adData = result?.data || result;
 
-    const userWantsSymbolsAd = wantsSymbols(`${product} ${customPrompt}`);
-    if (!userWantsSymbolsAd && adData) {
+    if (adData) {
       ['longFormAd', 'shortAd'].forEach((key) => {
         if (adData[key]) adData[key] = cleanMarkdownSymbols(adData[key]);
       });

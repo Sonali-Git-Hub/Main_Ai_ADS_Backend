@@ -572,7 +572,7 @@ exports.generateCampaignStrategy = async (req, res) => {
       ? workspace.contentPillars
       : brandProfile?.structuredIdentity?.content_angles || ['Brand Value', 'Product Innovation', 'Customer Proof', 'Industry Trends'];
     const audienceStr = campaign.targetAudience || (workspace?.targetAudience || []).join(', ') || 'Target buyers & consumers';
-    const platforms = campaign.platforms && campaign.platforms.length > 0 ? campaign.platforms : ['Instagram', 'LinkedIn', 'YouTube', 'Email'];
+    const platforms = campaign.platforms && campaign.platforms.length > 0 ? campaign.platforms : ['Instagram', 'LinkedIn', 'SEO Blog', 'Email'];
 
     // Fetch existing posts of this campaign to use their exact topics
     const existingPosts = await CampaignPost.find({ campaignId: campaign._id }).sort({ date: 1, createdAt: 1 });
