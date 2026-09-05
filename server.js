@@ -424,6 +424,10 @@ app.use('/api/admin', adminRoutes);
 // SEO Intelligence routes (AI-powered keyword clustering, regeneration, brief generation)
 app.use('/api/seo', seoRoutes);
 
+// Plans & Subscription routes (DB-driven pricing plans & topups)
+const planRoutes = require('./routes/planRoutes');
+app.use('/api/plans', planRoutes);
+
 // Auto-Pilot Pipeline (SSE-based full orchestrator)
 const autopilotController = require('./controllers/autopilotController');
 app.post('/api/autopilot/generate', autopilotController.generateFullPipeline);
@@ -1419,12 +1423,6 @@ function generateCategoryAwareVertexAIVisual(prompt = '', style = 'Glassmorphic 
 
   return 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
 }
-
-app.post('/api/creative/credits/topup', (req, res) => {
-  const { credits = 50, packName = '50 Credits Pack' } = req.body;
-  const result = topUpCredits(credits, packName);
-  res.json({ success: true, ...result });
-});
 
 app.post('/api/creative/credits/tier', (req, res) => {
   const { tier } = req.body;
