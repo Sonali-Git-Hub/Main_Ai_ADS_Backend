@@ -118,7 +118,7 @@ function craftBrandAdPrompt({
     styleDirective = 'ultra-luxury dark studio editorial, rich obsidian textures, polished metallic reflections, subtle gold accents, high-end commercial ad';
   }
 
-  const finalPrompt = `${sceneDetails}, authentic brand essence of ${cleanBrand} ("${tagline || topic}"), brand color harmony (${colorsList}), ${styleDirective}`;
+  const finalPrompt = `${sceneDetails}, featuring sleek brand logo emblem badge of ${cleanBrand} in top corner, authentic brand essence of ${cleanBrand} ("${tagline || topic}"), brand color harmony (${colorsList}), ${styleDirective}`;
   return finalPrompt;
 }
 

@@ -432,6 +432,60 @@ app.use('/api/plans', planRoutes);
 const autopilotController = require('./controllers/autopilotController');
 app.post('/api/autopilot/generate', autopilotController.generateFullPipeline);
 
+// ─── Image Download Proxy Endpoint (Guarantees File Save to User Device) ───
+app.get('/api/download-image', async (req, res) => {
+  try {
+    const imageUrl = req.query.url;
+    let fileName = req.query.filename || `ai_ads_visual_${Date.now()}.jpg`;
+    
+    // Sanitize filename to ASCII for Content-Disposition header compliance
+    const safeFileName = fileName
+      .replace(/[^\x20-\x7E]/g, '') // remove non-ASCII characters like ™, ®, ©
+      .replace(/["';\\]/g, '')      // remove special header quotes
+      .trim() || `ai_ads_visual_${Date.now()}.jpg`;
+
+    const encodedFileName = encodeURIComponent(safeFileName);
+
+    if (!safeFileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
+      fileName += '.jpg';
+    }
+
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'Missing image url' });
+    }
+
+    // Handle Data URL (base64)
+    if (imageUrl.startsWith('data:')) {
+      const matches = imageUrl.match(/^data:(.+);base64,(.+)$/);
+      if (matches) {
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName}`);
+        return res.send(buffer);
+      }
+    }
+
+    // Handle Remote URL
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return res.status(404).json({ error: 'Failed to fetch image from URL' });
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName}`);
+    return res.send(buffer);
+  } catch (err) {
+    console.error('Download Proxy Error:', err.message);
+    return res.status(500).json({ error: 'Failed to download image', details: err.message });
+  }
+});
+
 // ─── LEGACY WORKSPACE / BRAND DNA ENDPOINTS (backward compatible & Multi-Tenant Isolated) ──────────────
 app.get('/api/workspace/list', async (req, res) => {
   try {

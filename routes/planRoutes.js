@@ -4,99 +4,131 @@ const mongoose = require('mongoose');
 const Plan = require('../models/Plan');
 const Workspace = require('../models/Workspace');
 
-// Default initial plans database seed data (50% Profit Margin Model)
+// Official Platform Subscription Plans Database Seed Data
 const DEFAULT_PLANS = [
   {
-    planId: 'starter',
+    planId: 'base',
     name: 'Starter',
+    badge: 'Starter',
+    subtitle: 'Core AI text generation & 150 monthly visual credits for solo creators',
     priceUSD: 9.99,
     priceINR: 799,
+    prices: {
+      INR: { primary: '₹799', period: '/month', secondary: '($9.99/mo)' },
+      USD: { primary: '$9.99', period: '/month', secondary: '(₹799/mo)' },
+      EUR: { primary: '€8.99', period: '/month', secondary: '($9.99/mo)' },
+      GBP: { primary: '£7.99', period: '/month', secondary: '($9.99/mo)' },
+      CAD: { primary: 'CA$12.99', period: '/month', secondary: '($9.99/mo)' },
+      AUD: { primary: 'A$14.99', period: '/month', secondary: '($9.99/mo)' },
+      AED: { primary: 'AED 36.99', period: '/month', secondary: '($9.99/mo)' },
+    },
     billingCycle: 'monthly',
     imageCredits: 150,
-    textGenerations: '1,000 Gens',
-    description: 'Perfect for small business owners and creators launching their initial AI marketing & brand campaigns.',
-    badge: 'Starter',
+    textGenerations: '1,000 Gens / mo',
+    description: 'Core AI text generation & 150 monthly visual credits for solo creators',
     isPopular: false,
     order: 1,
     features: [
-      '150 Visual Ad Image Credits / month',
-      '1,000 Text Copies, Blogs & Ad Copies',
-      'Full Strategy Hub & 30-Day Marketing Roadmap',
-      'Single Card Strategy Content Regenerator',
-      'SEO Keyword Clustering & Content Briefs',
-      'AI Website Builder (15 Pages)',
-      '500 AISA Chat Copilot Messages',
-      '1 Active Brand Workspace'
+      '150 Monthly Visual Credits (AI Image & Ad Creative Generator)',
+      '1,000 Text Generations / mo (Social Posts, Blogs, Emails & Ads)',
+      '3 Brand DNA Workspaces (Website Scraper & Tone Ingestion)',
+      '30-Day Marketing Roadmap Generator (Strategy Hub)',
+      'SEO Intelligence (Keyword Clusters & Content Briefs)',
+      'Content Studio (Social Copy, Blogs & Sales Copy Generators)',
+      'AISA™ Copilot AI Assistant & Drag-and-Drop Calendar'
     ]
   },
   {
-    planId: 'pro',
+    planId: 'professional',
     name: 'Pro / Growth',
+    badge: 'Growth Tier',
+    subtitle: 'Multi-brand DNA, 450 visual credits, Campaign Builder & Approvals Desk',
     priceUSD: 29.99,
     priceINR: 2399,
+    prices: {
+      INR: { primary: '₹2,399', period: '/month', secondary: '($29.99/mo)' },
+      USD: { primary: '$29.99', period: '/month', secondary: '(₹2,399/mo)' },
+      EUR: { primary: '€26.99', period: '/month', secondary: '($29.99/mo)' },
+      GBP: { primary: '£22.99', period: '/month', secondary: '($29.99/mo)' },
+      CAD: { primary: 'CA$39.99', period: '/month', secondary: '($29.99/mo)' },
+      AUD: { primary: 'A$44.99', period: '/month', secondary: '($29.99/mo)' },
+      AED: { primary: 'AED 109.99', period: '/month', secondary: '($29.99/mo)' },
+    },
     billingCycle: 'monthly',
     imageCredits: 450,
-    textGenerations: '3,000 Gens',
-    description: 'Ideal for growing DTC brands and marketing managers scaling cross-channel traffic and conversions.',
-    badge: 'Most Popular',
-    isPopular: true,
+    textGenerations: '3,000 Gens / mo',
+    description: 'Multi-brand DNA, 450 visual credits, Campaign Builder & Approvals Desk',
+    isPopular: false,
     order: 2,
     features: [
-      '450 Visual Ad Image Credits / month',
-      '3,000 Text Copies, Blogs & Ad Copies',
-      'Full Strategy Hub & Card Regenerator',
-      'Advanced SEO Intent Clustering & Briefs',
-      'AI Website Builder (50 Pages + Live Chat Edits)',
-      '1,500 AISA Chat Copilot Messages',
-      'Multi-Brand DNA Memory (3 Brand Workspaces)',
-      'Approvals Desk & Review Queue'
+      '450 Monthly Visual Credits (Creative Studio + Aspect Controls)',
+      '3,000 Text Generations / mo (Full Content & Copy Suite)',
+      '10 Brand DNA Workspaces (Multi-Brand Tone & Scraping)',
+      'Campaign Builder (Multi-Channel Planner & Post Generator)',
+      'AI Website Builder (Brief Analyzer & Full-Page HTML Code)',
+      'Approvals Desk (Content Review Queue & Workflows)',
+      'Asset Library & Performance Dashboard (KPI Metrics)'
     ]
   },
   {
-    planId: 'agency',
+    planId: 'agency_pro',
     name: 'Agency / Scale',
+    badge: 'Most Popular',
+    subtitle: 'Unlimited multi-client workspaces & 1,200 visual credits',
     priceUSD: 79.99,
     priceINR: 6399,
+    prices: {
+      INR: { primary: '₹6,399', period: '/month', secondary: '($79.99/mo)' },
+      USD: { primary: '$79.99', period: '/month', secondary: '(₹6,399/mo)' },
+      EUR: { primary: '€72.99', period: '/month', secondary: '($79.99/mo)' },
+      GBP: { primary: '£62.99', period: '/month', secondary: '($79.99/mo)' },
+      CAD: { primary: 'CA$109.99', period: '/month', secondary: '($79.99/mo)' },
+      AUD: { primary: 'A$119.99', period: '/month', secondary: '($79.99/mo)' },
+      AED: { primary: 'AED 289.99', period: '/month', secondary: '($79.99/mo)' },
+    },
     billingCycle: 'monthly',
     imageCredits: 1200,
-    textGenerations: '8,000 Gens',
-    description: 'Built for agencies and high-volume marketing teams managing multiple client brands simultaneously.',
-    badge: 'Best for Agencies',
-    isPopular: false,
+    textGenerations: '8,000 Gens / mo',
+    description: 'Unlimited multi-client workspaces & 1,200 visual credits',
+    isPopular: true,
     order: 3,
     features: [
-      '1,200 Visual Ad Image Credits / month',
-      '8,000 Text Copies, Blogs & Ad Copies',
-      'Full Strategy Hub & Unlimited Card Regen',
-      'Enterprise SEO Intent Clusters & Briefs',
-      'AI Website Builder (150 Pages + Live Chat Edits)',
-      '5,000 AISA Chat Copilot Messages',
-      'Multi-Brand Workspaces (10 Brands)',
-      'Team RBAC & Client Approvals Desk',
-      'Centralized Asset Library'
+      '1,200 Monthly Visual Credits (4x Visual Variation Engine)',
+      '8,000 Text Generations / mo (High-Volume Strategy & Copy)',
+      'Unlimited Multi-Client Workspaces & Brand DNA Ingestion',
+      'AI Web Builder + Hero Visuals (Code + 2x Hero Visual Generator)',
+      'Full Approvals Desk Queue & Workflow Management',
+      'Media Asset Library with Cloud Storage'
     ]
   },
   {
     planId: 'enterprise',
     name: 'Enterprise',
+    badge: 'Enterprise',
+    subtitle: 'High-volume generation, 3,000 visual credits & unlimited AI text generation',
     priceUSD: 199.99,
     priceINR: 15999,
+    prices: {
+      INR: { primary: '₹15,999', period: '/month', secondary: '($199.99/mo)' },
+      USD: { primary: '$199.99', period: '/month', secondary: '(₹15,999/mo)' },
+      EUR: { primary: '€179.99', period: '/month', secondary: '($199.99/mo)' },
+      GBP: { primary: '£159.99', period: '/month', secondary: '($199.99/mo)' },
+      CAD: { primary: 'CA$269.99', period: '/month', secondary: '($199.99/mo)' },
+      AUD: { primary: 'A$299.99', period: '/month', secondary: '($199.99/mo)' },
+      AED: { primary: 'AED 729.99', period: '/month', secondary: '($199.99/mo)' },
+    },
     billingCycle: 'monthly',
     imageCredits: 3000,
     textGenerations: 'Unlimited',
-    description: 'Tailored for large organizations requiring custom SLAs, unlimited copy generation, and high volume image assets.',
-    badge: 'Enterprise',
+    description: 'High-volume generation, 3,000 visual credits & unlimited AI text generation',
     isPopular: false,
     order: 4,
     features: [
-      '3,000 Visual Ad Image Credits / month',
-      'Unlimited Text Copies, Blogs & Ad Copies',
-      'Unlimited Strategy Hub 30-Day Roadmaps',
-      'Unlimited SEO Intent Clusters & Briefs',
-      'Unlimited AI Website Builder Pages',
-      'Unlimited AISA Copilot Assistant',
-      'Unlimited Brand DNA Memory Stores',
-      'Dedicated Account Manager & 24/7 SLA'
+      '3,000 Monthly Visual Credits (High-Volume Ad & Visual Gen)',
+      'UNLIMITED Text Generations (Uncapped AI Content Engine)',
+      'Unlimited Brand Workspaces & Priority Processing',
+      'AI Web Builder with Live Chat Edit (Real-Time Code Tweaking)',
+      'All Core Platform Modules Included (Strategy, SEO, Content, Web & Ads)'
     ]
   }
 ];
@@ -104,15 +136,13 @@ const DEFAULT_PLANS = [
 // ─── Memory Fallback Store ──────────────────────────────────────────────────
 let memoryPlans = [...DEFAULT_PLANS];
 
-// Helper: Seed plans into database if empty
+// Helper: Seed/Sync plans into MongoDB database
 const ensurePlansSeeded = async () => {
   try {
     if (mongoose.connection.readyState === 1) {
-      const count = await Plan.countDocuments();
-      if (count === 0) {
-        console.log('[Plans Engine] Seeding subscription plans into MongoDB...');
-        await Plan.insertMany(DEFAULT_PLANS);
-      }
+      await Plan.deleteMany({});
+      await Plan.insertMany(DEFAULT_PLANS);
+      console.log('[Plans Engine] Seeded latest subscription plans & feature checklists into MongoDB!');
     }
   } catch (err) {
     console.warn('[Plans Engine] MongoDB plan seed note:', err.message);
@@ -139,7 +169,7 @@ router.get('/', async (req, res) => {
 
 // ─── POST /api/plans/subscribe ──────────────────────────────────────────────
 router.post('/subscribe', async (req, res) => {
-  const { workspaceId, planId } = req.body || {};
+  const { workspaceId, planId, userEmail } = req.body || {};
   try {
     await ensurePlansSeeded();
     let targetPlan = null;
@@ -148,7 +178,7 @@ router.post('/subscribe', async (req, res) => {
       targetPlan = await Plan.findOne({ planId });
     }
     if (!targetPlan) {
-      targetPlan = memoryPlans.find(p => p.planId === planId) || memoryPlans[0];
+      targetPlan = memoryPlans.find(p => p.planId === planId || (p.planId === 'base' && planId === 'starter')) || memoryPlans[0];
     }
 
     if (workspaceId && mongoose.Types.ObjectId.isValid(workspaceId) && mongoose.connection.readyState === 1) {
@@ -158,9 +188,17 @@ router.post('/subscribe', async (req, res) => {
       });
     }
 
+    if (userEmail && mongoose.connection.readyState === 1) {
+      const User = require('../models/User');
+      await User.findOneAndUpdate({ email: userEmail }, {
+        plan: targetPlan.planId,
+        credits: targetPlan.imageCredits
+      });
+    }
+
     res.json({
       success: true,
-      message: `Successfully subscribed to ${targetPlan.name} plan.`,
+      message: `Successfully subscribed to ${targetPlan.name} plan. Database updated!`,
       plan: targetPlan
     });
   } catch (err) {
