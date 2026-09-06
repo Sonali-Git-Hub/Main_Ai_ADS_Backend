@@ -41,8 +41,11 @@ async function runCrawlerAgent(targetUrl, seedBrandName = '') {
   // Fallback 1: Web Search Enrichment via Tavily if HQ or Parent Company is missing from site DOM
   if (!hqObj.headquarters.value || hqObj.headquarters.confidence < 0.5) {
     try {
-      console.log(`[CrawlerAgent] 🔍 HQ missing from DOM. Triggering web search enrichment for "${brandNameObj.value}"...`);
-      const searchRes = await searchTavily(`"${brandNameObj.value}" corporate headquarters location city country`, 'advanced', 3);
+      const searchPromise = searchTavily(`"${brandNameObj.value}" corporate headquarters location city country`, 'advanced', 3);
+      const searchRes = await Promise.race([
+        searchPromise,
+        new Promise(resolve => setTimeout(() => resolve(null), 2000))
+      ]);
       if (searchRes && (searchRes.answer || (searchRes.results && searchRes.results.length > 0))) {
         const text = (searchRes.answer + ' ' + searchRes.results.map(r => r.snippet).join(' ')).trim();
         if (text.length > 10) {

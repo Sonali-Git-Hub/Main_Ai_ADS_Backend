@@ -500,7 +500,8 @@ async function crawlBrandContext(cleanUrl, $) {
       const isPressPage = /press|media|newsroom|brand|corporate|faq/i.test(pageUrl);
 
       const response = await axios.get(pageUrl, {
-        timeout: 5000,
+        timeout: 2500,
+        maxRedirects: 3,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -612,7 +613,7 @@ async function capturePageScreenshots(pagesList) {
       ...p,
       screenshot: {
         base64: null,
-        mimeType: 'image/png',
+        mimeType: 'image/jpeg',
         timestamp: new Date().toISOString(),
         status: 'FAILED',
         error: 'Puppeteer library unavailable'
@@ -620,8 +621,20 @@ async function capturePageScreenshots(pagesList) {
     }));
   }
 
+  // Cap to top 2 key pages (Homepage + top About/Contact page) for ultra-fast performance
+  const targetPages = pagesList.slice(0, 2);
+  const remainingPages = pagesList.slice(2).map(p => ({
+    ...p,
+    screenshot: {
+      base64: null,
+      mimeType: 'image/jpeg',
+      timestamp: new Date().toISOString(),
+      status: 'SKIPPED',
+      error: 'Capped for speed optimization'
+    }
+  }));
+
   let browser = null;
-  const pagesEvidence = [];
   let successCount = 0;
 
   try {
@@ -630,22 +643,20 @@ async function capturePageScreenshots(pagesList) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     });
 
-    for (const pageItem of pagesList) {
+    const capturedResults = await Promise.all(targetPages.map(async (pageItem) => {
       const pageUrl = pageItem.url;
-      console.log(`[SCREENSHOT] Capturing: ${pageUrl}`);
-
+      console.log(`[SCREENSHOT] Ultra-fast capture: ${pageUrl}`);
       let pageInstance = null;
       try {
         pageInstance = await browser.newPage();
-        await pageInstance.setViewport({ width: 1280, height: 800 });
+        await pageInstance.setViewport({ width: 1024, height: 640 });
 
-        // Navigate to page
-        await pageInstance.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        // Fast navigation (6s timeout)
+        await pageInstance.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 6000 });
 
-        // Allow 1s for lazy-loaded images/fonts & JS rendering
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Fast render pause (150ms instead of 1000ms)
+        await new Promise(resolve => setTimeout(resolve, 150));
 
-        // Extract live rendered DOM text for Single Page Applications (React/Vue/Next.js)
         let liveRenderedText = '';
         try {
           liveRenderedText = await pageInstance.evaluate(() => {
@@ -657,73 +668,69 @@ async function capturePageScreenshots(pagesList) {
           });
         } catch (e) {}
 
+        // Compressed JPEG format (quality: 60) for fast base64 & low LLM memory overhead
         const base64Screenshot = await pageInstance.screenshot({
-          type: 'png',
+          type: 'jpeg',
+          quality: 60,
           encoding: 'base64',
           fullPage: false
         });
 
-        console.log(`[SCREENSHOT] Captured successfully: ${pageUrl} (Live DOM Text: ${liveRenderedText.length} chars)`);
         successCount++;
-
         let enrichedTextEvidence = pageItem.textEvidence || '';
         if (liveRenderedText && (liveRenderedText.length > enrichedTextEvidence.length || enrichedTextEvidence.length < 50)) {
           enrichedTextEvidence = liveRenderedText.slice(0, 1200);
         }
 
-        pagesEvidence.push({
+        return {
           ...pageItem,
           textEvidence: enrichedTextEvidence,
           screenshot: {
             base64: base64Screenshot,
-            mimeType: 'image/png',
+            mimeType: 'image/jpeg',
             timestamp: new Date().toISOString(),
             status: 'SUCCESS',
             error: null
           }
-        });
+        };
       } catch (err) {
-        console.warn(`[SCREENSHOT] Failed: ${pageUrl} (${err.message})`);
-        pagesEvidence.push({
+        console.warn(`[SCREENSHOT] Fast capture note for ${pageUrl}: ${err.message}`);
+        return {
           ...pageItem,
           screenshot: {
             base64: null,
-            mimeType: 'image/png',
+            mimeType: 'image/jpeg',
             timestamp: new Date().toISOString(),
             status: 'FAILED',
             error: err.message
           }
-        });
+        };
       } finally {
         if (pageInstance) {
           try { await pageInstance.close(); } catch (e) {}
         }
       }
-    }
+    }));
+
+    console.log(`[SCREENSHOT] Ultra-fast captured ${successCount} / ${targetPages.length} pages in parallel`);
+    return [...capturedResults, ...remainingPages];
   } catch (browserErr) {
     console.error(`[SCREENSHOT] Browser launch failed: ${browserErr.message}`);
-    for (const pageItem of pagesList) {
-      if (!pagesEvidence.some(p => p.url === pageItem.url)) {
-        pagesEvidence.push({
-          ...pageItem,
-          screenshot: {
-            base64: null,
-            mimeType: 'image/png',
-            timestamp: new Date().toISOString(),
-            status: 'FAILED',
-            error: browserErr.message
-          }
-        });
+    return pagesList.map(p => ({
+      ...p,
+      screenshot: {
+        base64: null,
+        mimeType: 'image/jpeg',
+        timestamp: new Date().toISOString(),
+        status: 'FAILED',
+        error: browserErr.message
       }
-    }
+    }));
   } finally {
     if (browser) {
       try { await browser.close(); } catch (e) {}
     }
   }
-
-  console.log(`[SCREENSHOT] Captured ${successCount} / ${pagesList.length} crawled pages`);
-  return pagesEvidence;
 }
 
 
@@ -845,7 +852,7 @@ async function scrapeBrandWebsite(urlInput, brandNameOverride = '') {
   };
 
   try {
-    const clearbitRes = await axios.head(clearbitLogoUrl, { timeout: 3000 });
+    const clearbitRes = await axios.head(clearbitLogoUrl, { timeout: 1200 });
     if (clearbitRes.status === 200) {
       logoUrl = clearbitLogoUrl;
       crawledSources.push('CLEARBIT_LOGO_API');

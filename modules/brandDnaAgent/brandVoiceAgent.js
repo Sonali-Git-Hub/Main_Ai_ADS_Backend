@@ -31,10 +31,11 @@ async function runVoiceAgent(crawlResult) {
 
   const pageImages = (scrapedMetadata.pagesEvidence || [])
     .filter(p => p && p.screenshot && p.screenshot.status === 'SUCCESS' && p.screenshot.base64)
+    .slice(0, 2)
     .map(p => ({
       url: p.url,
       pageType: p.pageType || 'PAGE',
-      mimeType: p.screenshot.mimeType || 'image/png',
+      mimeType: p.screenshot.mimeType || 'image/jpeg',
       base64: p.screenshot.base64
     }));
 
