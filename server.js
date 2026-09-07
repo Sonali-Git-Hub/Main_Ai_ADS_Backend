@@ -1728,10 +1728,9 @@ app.get('/api/analytics/summary', async (req, res) => {
       Content.countDocuments({ ...filter, type: { $in: ['AD', 'ad_copy'] } }),
     ]);
 
-    // Real generated content saved in Asset Library & DB (Content collection + GeneratedPost)
-    // NOTE: Does NOT count cpTotal (calendar planned entries) as requested
-    const actualSavedContent = contentTotal + gpTotal;
-    const totalApproved = cpApproved + gpApproved + contentApproved;
+    // Real generated content saved in Asset Library & DB (Content collection)
+    const actualSavedContent = contentTotal;
+    const totalApproved = contentApproved;
 
     const totalBlogs = blogCount;
     const totalSocial = gpTotal + socialContentCount;
