@@ -118,7 +118,25 @@ function craftBrandAdPrompt({
     styleDirective = 'ultra-luxury dark studio editorial, rich obsidian textures, polished metallic reflections, subtle gold accents, high-end commercial ad';
   }
 
-  const finalPrompt = `${sceneDetails}, featuring sleek brand logo emblem badge of ${cleanBrand} in top corner, authentic brand essence of ${cleanBrand} ("${tagline || topic}"), brand color harmony (${colorsList}), ${styleDirective}`;
+  let logoPrompt = `featuring official ${cleanBrand} brand logo emblem badge`;
+  const lowerB = cleanBrand.toLowerCase();
+  if (lowerB.includes('jio') || lowerB.includes('hotstar')) {
+    logoPrompt = `featuring official JioHotstar brand logo emblem (iconic Jio and Hotstar brand crest display in background studio lighting)`;
+  } else if (lowerB.includes('chings')) {
+    logoPrompt = `featuring official Ching's Secret brand logo badge with red and white Asian culinary emblem on packaging`;
+  } else if (lowerB.includes('redbus')) {
+    logoPrompt = `featuring official redBus brand logo emblem (red transit emblem) prominently displayed`;
+  } else if (lowerB.includes('nataraj')) {
+    logoPrompt = `featuring official Nataraj brand logo emblem (classic red and black pencil branding)`;
+  } else if (lowerB.includes('nvidia')) {
+    logoPrompt = `featuring official NVIDIA logo emblem with glowing green eye motif (#76B900)`;
+  } else if (lowerB.includes('zomato')) {
+    logoPrompt = `featuring official Zomato brand logo emblem (crimson red food delivery badge)`;
+  } else if (lowerB.includes('swiggy')) {
+    logoPrompt = `featuring official Swiggy brand logo emblem (vibrant orange lettermark badge)`;
+  }
+
+  const finalPrompt = `${sceneDetails}, ${logoPrompt}, authentic brand essence of ${cleanBrand} ("${tagline || topic}"), brand color harmony (${colorsList}), ${styleDirective}`;
   return finalPrompt;
 }
 
@@ -246,10 +264,43 @@ function generateBrand3DSvg({
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.trim())}`;
 }
 
+// Active concurrent image generation lock map to prevent duplicate executions
+const activeGenerations = new Map();
+
+async function generateBrandAdImage(params = {}) {
+  const {
+    workspaceId,
+    brandName = '',
+    prompt,
+    customPrompt,
+    topic = 'Brand Campaign',
+    aspect = '1:1'
+  } = params;
+
+  const cleanText = (prompt || customPrompt || topic || '').trim().slice(0, 60).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const reqKey = `${workspaceId || 'anon'}_${brandName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${cleanText}_${aspect}`;
+
+  if (activeGenerations.has(reqKey)) {
+    console.log(`[BrandImageAgent] 🔒 Deduplicating concurrent image generation request for key: "${reqKey}"`);
+    return activeGenerations.get(reqKey);
+  }
+
+  const promise = _executeBrandAdImageGeneration(params);
+  activeGenerations.set(reqKey, promise);
+
+  try {
+    return await promise;
+  } finally {
+    setTimeout(() => {
+      activeGenerations.delete(reqKey);
+    }, 4000);
+  }
+}
+
 /**
- * Main Autonomous Brand DNA Image Generation Agent
+ * Main Autonomous Brand DNA Image Generation Agent Implementation
  */
-async function generateBrandAdImage({
+async function _executeBrandAdImageGeneration({
   workspaceId,
   brandName,
   brandColors,
@@ -320,7 +371,7 @@ async function generateBrandAdImage({
   let gcsPath = null;
   const client = globalAiClient || aiClient;
   if (client && typeof client.models?.generateContent === 'function') {
-    const candidateModels = ['gemini-3.1-flash-image', 'imagen-3.0-generate-002'];
+    const candidateModels = ['gemini-3.1-flash-image'];
     for (const modelName of candidateModels) {
       if (imageUrl) break;
       try {
