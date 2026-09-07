@@ -1243,12 +1243,7 @@ app.post('/api/brand/regenerate-section', async (req, res) => {
 });
 
 // SEO brief/generate — handled by seoRoutes (mounted above as /api/seo)
-
-// 3. Content Studio Generation & Fact Check (MongoDB Saved)
-app.post('/api/content/social/generate', async (req, res) => {
-  const socialData = await generateSocialPosts(req.body);
-  res.json({ success: true, data: socialData });
-});
+// Content Studio Generation — handled by contentRoutes (mounted above as /api/content)
 
 app.post('/api/content/blog/draft-legacy', async (req, res) => {
   const draft = await generateBlogArticle(req.body);
